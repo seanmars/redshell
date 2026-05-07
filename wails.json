@@ -1,0 +1,19 @@
+{
+  "$schema": "https://wails.io/schemas/config.v2.json",
+  "name": "RedShell",
+  "outputfilename": "redshell",
+  "frontend:install": "pnpm install",
+  "frontend:build": "pnpm run build",
+  "frontend:dev:watcher": "pnpm run dev",
+  "frontend:dev:serverUrl": "auto",
+  "author": {
+    "name": "seanmars"
+  },
+  "info": {
+    "companyName": "seanmars",
+    "productName": "RedShell",
+    "productVersion": "0.4.0",
+    "copyright": "Copyright (c) 2026 seanmars",
+    "comments": "Plugin marketplace manager for AI coding agents"
+  }
+}

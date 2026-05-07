@@ -1,0 +1,23 @@
+{
+  "$schema": "https://example.com/claude-marketplace.schema.json",
+  "name": "Example Claude Marketplace",
+  "version": "1.0.0",
+  "description": "A test Claude manifest",
+  "owner": { "name": "Example", "email": "ex@example.com" },
+  "plugins": [
+    {
+      "name": "alpha",
+      "description": "First plugin",
+      "source": "./plugins/alpha",
+      "category": "devtools",
+      "version": "0.1.0",
+      "author": { "name": "Alice" }
+    },
+    {
+      "name": "beta",
+      "description": "Second plugin",
+      "source": "./plugins/beta",
+      "category": "productivity"
+    }
+  ]
+}

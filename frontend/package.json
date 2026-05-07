@@ -1,0 +1,57 @@
+{
+  "name": "template-vue-daisyui",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "run-p type-check \"build-only {@}\" --",
+    "preview": "vite preview",
+    "test:unit": "vitest",
+    "build-only": "vite build",
+    "type-check": "vue-tsc --build",
+    "lint": "run-s lint:*",
+    "lint:oxlint": "oxlint . --fix",
+    "lint:eslint": "eslint . --fix --cache",
+    "format": "prettier --write --experimental-cli src/"
+  },
+  "dependencies": {
+    "@fontsource-variable/geist": "5.2.8",
+    "@fontsource-variable/geist-mono": "5.2.7",
+    "@tailwindcss/vite": "4.2.2",
+    "@vueuse/core": "14.2.1",
+    "daisyui": "5.5.19",
+    "pinia": "3.0.4",
+    "tailwindcss": "4.2.2",
+    "vue": "3.5.33",
+    "vue-router": "5.0.6"
+  },
+  "devDependencies": {
+    "@iconify/vue": "5.0.0",
+    "@tsconfig/node24": "24.0.4",
+    "@types/jsdom": "28.0.1",
+    "@types/node": "24.12.2",
+    "@vitejs/plugin-vue": "6.0.6",
+    "@vitest/eslint-plugin": "1.6.16",
+    "@vue/eslint-config-typescript": "14.7.0",
+    "@vue/test-utils": "2.4.8",
+    "@vue/tsconfig": "0.9.1",
+    "eslint": "10.2.1",
+    "eslint-config-prettier": "10.1.8",
+    "eslint-plugin-oxlint": "1.61.0",
+    "eslint-plugin-vue": "10.9.0",
+    "jiti": "2.6.1",
+    "jsdom": "29.0.2",
+    "npm-run-all2": "8.0.4",
+    "oxlint": "1.61.0",
+    "prettier": "3.8.3",
+    "typescript": "6.0.3",
+    "vite": "8.0.10",
+    "vite-plugin-vue-devtools": "8.1.1",
+    "vitest": "4.1.5",
+    "vue-tsc": "3.2.7"
+  },
+  "engines": {
+    "node": "^20.19.0 || >=22.12.0"
+  }
+}

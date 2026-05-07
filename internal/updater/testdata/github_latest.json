@@ -1,0 +1,44 @@
+{
+  "url": "https://api.github.com/repos/seanmars/redshell/releases/123456",
+  "html_url": "https://github.com/seanmars/redshell/releases/tag/v0.5.0",
+  "id": 123456,
+  "tag_name": "v0.5.0",
+  "name": "v0.5.0",
+  "draft": false,
+  "prerelease": false,
+  "created_at": "2026-05-01T09:30:00Z",
+  "published_at": "2026-05-01T10:00:00Z",
+  "body": "## Changes\n\n- Added portable auto-updater\n- Fixed an obscure bug in marketplace caching\n\n### Checksums\nSee `checksums.txt` for SHA-256 of each asset.\n",
+  "assets": [
+    {
+      "url": "https://api.github.com/repos/seanmars/redshell/releases/assets/1",
+      "id": 1,
+      "name": "redshell-windows-amd64.exe",
+      "label": "Portable Windows binary",
+      "content_type": "application/octet-stream",
+      "state": "uploaded",
+      "size": 12345678,
+      "browser_download_url": "https://github.com/seanmars/redshell/releases/download/v0.5.0/redshell-windows-amd64.exe"
+    },
+    {
+      "url": "https://api.github.com/repos/seanmars/redshell/releases/assets/2",
+      "id": 2,
+      "name": "RedShell-amd64-installer.exe",
+      "label": "NSIS installer",
+      "content_type": "application/octet-stream",
+      "state": "uploaded",
+      "size": 13456789,
+      "browser_download_url": "https://github.com/seanmars/redshell/releases/download/v0.5.0/RedShell-amd64-installer.exe"
+    },
+    {
+      "url": "https://api.github.com/repos/seanmars/redshell/releases/assets/3",
+      "id": 3,
+      "name": "checksums.txt",
+      "label": "SHA-256 checksums",
+      "content_type": "text/plain",
+      "state": "uploaded",
+      "size": 256,
+      "browser_download_url": "https://github.com/seanmars/redshell/releases/download/v0.5.0/checksums.txt"
+    }
+  ]
+}

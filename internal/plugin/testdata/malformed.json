@@ -1,0 +1,8 @@
+{
+  "name": "Broken",
+  "plugins": [
+    { "name": "no-source-entry" },
+    { "source": "./plugins/no-name" },
+    { "name": "good", "source": "./plugins/good", "description": "keeper" }
+  ],
+}

@@ -1,0 +1,54 @@
+{
+  "name": "v0.5.0",
+  "tag_name": "v0.5.0",
+  "description": "## Changes\n\n- Added portable auto-updater\n- Fixed an obscure bug in marketplace caching\n",
+  "created_at": "2026-05-01T09:30:00Z",
+  "released_at": "2026-05-01T10:00:00Z",
+  "upcoming_release": false,
+  "author": {
+    "id": 1,
+    "username": "seanmars",
+    "name": "seanmars"
+  },
+  "commit": {
+    "id": "abc123def456",
+    "short_id": "abc123de",
+    "title": "release v0.5.0"
+  },
+  "assets": {
+    "count": 3,
+    "sources": [
+      {
+        "format": "zip",
+        "url": "https://gitlab.com/seanmars/redshell/-/archive/v0.5.0/redshell-v0.5.0.zip"
+      },
+      {
+        "format": "tar.gz",
+        "url": "https://gitlab.com/seanmars/redshell/-/archive/v0.5.0/redshell-v0.5.0.tar.gz"
+      }
+    ],
+    "links": [
+      {
+        "id": 100,
+        "name": "redshell-windows-amd64.exe",
+        "url": "https://gitlab.com/seanmars/redshell/-/releases/v0.5.0/downloads/redshell-windows-amd64.exe",
+        "direct_asset_url": "https://gitlab.com/seanmars/redshell/-/releases/v0.5.0/downloads/redshell-windows-amd64.exe",
+        "link_type": "package"
+      },
+      {
+        "id": 101,
+        "name": "RedShell-amd64-installer.exe",
+        "url": "https://gitlab.com/seanmars/redshell/-/releases/v0.5.0/downloads/RedShell-amd64-installer.exe",
+        "direct_asset_url": "https://gitlab.com/seanmars/redshell/-/releases/v0.5.0/downloads/RedShell-amd64-installer.exe",
+        "link_type": "package"
+      },
+      {
+        "id": 102,
+        "name": "checksums.txt",
+        "url": "https://gitlab.com/seanmars/redshell/-/releases/v0.5.0/downloads/checksums.txt",
+        "direct_asset_url": "https://gitlab.com/seanmars/redshell/-/releases/v0.5.0/downloads/checksums.txt",
+        "link_type": "other"
+      }
+    ]
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "name": "Example Copilot Marketplace",
+  "metadata": {
+    "description": "A test Copilot manifest",
+    "version": "1.0.0"
+  },
+  "owner": { "name": "Example", "email": "ex@example.com" },
+  "plugins": [
+    {
+      "name": "workiq",
+      "source": "./plugins/workiq",
+      "description": "Workflow plugin",
+      "version": "0.2.0",
+      "skills": ["./skills/workiq-review"]
+    },
+    {
+      "name": "spark",
+      "source": "./plugins/spark",
+      "description": "Spark plugin",
+      "version": "0.1.5",
+      "skills": ["./skills/spark-init"]
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+.idea/
+.git.bak/
+build/bin
+node_modules
+frontend/dist
+frontend/.eslintcache
+.worktrees
+dist/
+
+build/windows/installer/tmp/

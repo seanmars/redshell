@@ -1,0 +1,24 @@
+{
+  "banner": "never",
+  "model": "gpt-5.4",
+  "marketplaces": {
+    "chineseagamer-plugins": {
+      "source": {
+        "source": "git",
+        "url": "https://github.com/seanmars/ai-tools.git"
+      }
+    }
+  },
+  "installed_plugins": [
+    {
+      "name": "code-review-csharp",
+      "marketplace": "chineseagamer-plugins",
+      "installed_at": "2026-04-24T13:23:46.461Z",
+      "enabled": true,
+      "cache_path": "C:\\Users\\mars\\.copilot\\installed-plugins\\chineseagamer-plugins\\code-review-csharp"
+    }
+  ],
+  "enabledPlugins": {
+    "code-review-csharp@chineseagamer-plugins": true
+  }
+}

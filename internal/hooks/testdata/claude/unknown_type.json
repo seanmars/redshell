@@ -1,0 +1,12 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          { "type": "future_shape", "command": "leave-me-be", "extra": {"weird": true} }
+        ]
+      }
+    ]
+  }
+}

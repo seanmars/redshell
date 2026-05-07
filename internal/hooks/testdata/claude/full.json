@@ -1,0 +1,35 @@
+{
+  "disableAllHooks": false,
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          { "type": "command", "command": "echo before-bash", "timeout": 30 },
+          { "type": "http", "url": "https://example.com/hook", "headers": {"X-Token": "$TOKEN"} }
+        ]
+      },
+      {
+        "matcher": "^Notebook",
+        "hooks": [
+          { "type": "mcp_tool", "server": "memory", "tool": "remember" }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "matcher": "",
+        "hooks": [
+          { "type": "prompt", "prompt": "Audit $ARGUMENTS for secrets", "model": "claude-sonnet-4-6" }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          { "type": "agent", "prompt": "Summarise project state" }
+        ]
+      }
+    ]
+  }
+}

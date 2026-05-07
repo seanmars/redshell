@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "hooks": {
+    "sessionStart": [
+      { "type": "command", "bash": "scripts/start.sh", "powershell": "scripts/start.ps1", "cwd": ".", "timeoutSec": 10 }
+    ],
+    "sessionEnd": [
+      { "type": "command", "bash": "scripts/end.sh", "comment": "cleanup" }
+    ],
+    "userPromptSubmitted": [
+      { "type": "command", "powershell": "scripts/audit.ps1" }
+    ],
+    "preToolUse": [
+      { "type": "command", "bash": "scripts/gate.sh" }
+    ],
+    "postToolUse": [
+      { "type": "command", "bash": "scripts/log.sh" }
+    ],
+    "errorOccurred": [
+      { "type": "command", "bash": "scripts/notify.sh" }
+    ]
+  }
+}
