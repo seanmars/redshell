@@ -24,6 +24,7 @@ func Download(ctx context.Context, httpClient *http.Client, urlStr, destPath str
 	if err != nil {
 		return "", fmt.Errorf("download: build request: %w", err)
 	}
+	req.Header.Set("Accept", "application/octet-stream")
 	resp, err := httpClient.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("download: %w", err)

@@ -598,6 +598,7 @@ func downloadBytes(ctx context.Context, httpClient *http.Client, urlStr string) 
 	if err != nil {
 		return nil, err
 	}
+	req.Header.Set("Accept", "application/octet-stream")
 	resp, err := httpClient.Do(req)
 	if err != nil {
 		return nil, err

@@ -17,7 +17,9 @@ func TestDownloadHappyPath(t *testing.T) {
 	wantHash := sha256.Sum256(body)
 	wantHex := hex.EncodeToString(wantHash[:])
 
+	var gotAccept string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAccept = r.Header.Get("Accept")
 		w.Write(body)
 	}))
 	defer srv.Close()
@@ -39,6 +41,9 @@ func TestDownloadHappyPath(t *testing.T) {
 	}
 	if _, err := os.Stat(dest + ".partial"); !os.IsNotExist(err) {
 		t.Fatalf(".partial should be cleaned up: %v", err)
+	}
+	if gotAccept != "application/octet-stream" {
+		t.Fatalf("Accept header: got %q want application/octet-stream (required for GitHub asset API)", gotAccept)
 	}
 }
 

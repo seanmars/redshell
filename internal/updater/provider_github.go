@@ -113,6 +113,7 @@ type githubRelease struct {
 
 type githubAsset struct {
 	Name               string `json:"name"`
+	URL                string `json:"url"`
 	BrowserDownloadURL string `json:"browser_download_url"`
 	Size               int64  `json:"size"`
 }
@@ -140,9 +141,9 @@ func (r githubRelease) toRelease(binaryName string) (Release, error) {
 		Version:      r.TagName,
 		PublishedAt:  r.PublishedAt,
 		Notes:        r.Body,
-		AssetURL:     binary.BrowserDownloadURL,
+		AssetURL:     binary.URL,
 		AssetName:    binary.Name,
 		AssetSize:    binary.Size,
-		ChecksumsURL: checksums.BrowserDownloadURL,
+		ChecksumsURL: checksums.URL,
 	}, nil
 }

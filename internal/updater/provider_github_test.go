@@ -81,8 +81,13 @@ func TestGitHubProvider_LatestReleaseHappyPath(t *testing.T) {
 	if rel.AssetSize != 12345678 {
 		t.Fatalf("AssetSize: got %d want 12345678", rel.AssetSize)
 	}
-	if rel.AssetURL == "" || rel.ChecksumsURL == "" {
-		t.Fatalf("missing URLs: asset=%q checksums=%q", rel.AssetURL, rel.ChecksumsURL)
+	const wantAssetURL = "https://api.github.com/repos/seanmars/redshell/releases/assets/1"
+	const wantChecksumsURL = "https://api.github.com/repos/seanmars/redshell/releases/assets/3"
+	if rel.AssetURL != wantAssetURL {
+		t.Fatalf("AssetURL: got %q want %q (must be the API asset URL, not browser_download_url)", rel.AssetURL, wantAssetURL)
+	}
+	if rel.ChecksumsURL != wantChecksumsURL {
+		t.Fatalf("ChecksumsURL: got %q want %q", rel.ChecksumsURL, wantChecksumsURL)
 	}
 	if rel.PublishedAt.IsZero() {
 		t.Fatal("PublishedAt should be parsed")
