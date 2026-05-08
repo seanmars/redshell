@@ -61,6 +61,7 @@ func TestGitHubProvider_LatestReleaseHappyPath(t *testing.T) {
 		w.Header().Set("ETag", `"abc123"`)
 		w.Write(body)
 	})
+	p.SetInstallerAssetName("RedShell-amd64-installer.exe")
 
 	rel, err := p.LatestRelease(context.Background())
 	if err != nil {
@@ -91,6 +92,46 @@ func TestGitHubProvider_LatestReleaseHappyPath(t *testing.T) {
 	}
 	if rel.PublishedAt.IsZero() {
 		t.Fatal("PublishedAt should be parsed")
+	}
+	if rel.InstallerAssetName != "RedShell-amd64-installer.exe" {
+		t.Fatalf("InstallerAssetName: got %q want RedShell-amd64-installer.exe", rel.InstallerAssetName)
+	}
+	const wantInstallerURL = "https://api.github.com/repos/seanmars/redshell/releases/assets/2"
+	if rel.InstallerAssetURL != wantInstallerURL {
+		t.Fatalf("InstallerAssetURL: got %q want %q", rel.InstallerAssetURL, wantInstallerURL)
+	}
+	if rel.InstallerAssetSize != 13456789 {
+		t.Fatalf("InstallerAssetSize: got %d want 13456789", rel.InstallerAssetSize)
+	}
+}
+
+func TestGitHubProvider_InstallerAssetEmptyWhenNotConfigured(t *testing.T) {
+	body := loadFixture(t, "github_latest.json")
+	_, p := newGithubServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Write(body)
+	})
+	rel, err := p.LatestRelease(context.Background())
+	if err != nil {
+		t.Fatalf("LatestRelease: %v", err)
+	}
+	if rel.InstallerAssetName != "" || rel.InstallerAssetURL != "" {
+		t.Fatalf("installer fields should stay empty when SetInstallerAssetName not called, got name=%q url=%q", rel.InstallerAssetName, rel.InstallerAssetURL)
+	}
+}
+
+func TestInstallerAssetNameFor(t *testing.T) {
+	got, err := InstallerAssetNameFor("windows", "amd64")
+	if err != nil {
+		t.Fatalf("InstallerAssetNameFor(windows,amd64): %v", err)
+	}
+	if got != "RedShell-amd64-installer.exe" {
+		t.Fatalf("InstallerAssetNameFor(windows,amd64): got %q want RedShell-amd64-installer.exe", got)
+	}
+	if _, err := InstallerAssetNameFor("linux", "amd64"); err == nil {
+		t.Fatal("InstallerAssetNameFor(linux,amd64) should error")
+	}
+	if _, err := InstallerAssetNameFor("windows", "arm64"); err == nil {
+		t.Fatal("InstallerAssetNameFor(windows,arm64) should error (until ARM64 installer ships)")
 	}
 }
 
@@ -144,16 +185,30 @@ func TestGitHubProvider_MalformedJSONErrors(t *testing.T) {
 	}
 }
 
-func TestGitHubProvider_MissingBinaryAssetErrors(t *testing.T) {
+func TestGitHubProvider_MissingPortableAssetReturnsEmptyAssetFields(t *testing.T) {
+	// Installer-only releases (the publishing default after the switch)
+	// don't ship redshell-windows-amd64.exe. The provider must still
+	// succeed — install dispatch in service.go enforces per-pathway
+	// requirements based on BuildKind.
 	_, p := newGithubServer(t, func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`{"tag_name":"v0.5.0","assets":[{"name":"checksums.txt","browser_download_url":"https://example.com/checksums.txt","size":1}]}`))
+		w.Write([]byte(`{"tag_name":"v0.5.0","assets":[
+			{"url":"https://example.com/installer","name":"RedShell-amd64-installer.exe","size":2},
+			{"url":"https://example.com/checksums","name":"checksums.txt","size":1}
+		]}`))
 	})
-	_, err := p.LatestRelease(context.Background())
-	if err == nil {
-		t.Fatal("expected missing binary asset to error")
+	p.SetInstallerAssetName("RedShell-amd64-installer.exe")
+	rel, err := p.LatestRelease(context.Background())
+	if err != nil {
+		t.Fatalf("installer-only release should not error at provider level: %v", err)
 	}
-	if !errors.Is(err, ErrAssetNotFound) {
-		t.Fatalf("expected ErrAssetNotFound, got %v", err)
+	if rel.AssetURL != "" || rel.AssetName != "" || rel.AssetSize != 0 {
+		t.Fatalf("portable fields should be empty when absent from release, got url=%q name=%q size=%d", rel.AssetURL, rel.AssetName, rel.AssetSize)
+	}
+	if rel.InstallerAssetName != "RedShell-amd64-installer.exe" {
+		t.Fatalf("installer field should still be populated, got %q", rel.InstallerAssetName)
+	}
+	if rel.ChecksumsURL == "" {
+		t.Fatal("ChecksumsURL must always be populated (still required at provider level)")
 	}
 }
 

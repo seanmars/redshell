@@ -14,11 +14,12 @@ import (
 const defaultGitHubAPIBase = "https://api.github.com"
 
 type GitHubProvider struct {
-	Owner      string
-	Repo       string
-	APIBase    string
-	AssetName  string
-	HTTPClient *http.Client
+	Owner              string
+	Repo               string
+	APIBase            string
+	AssetName          string
+	InstallerAssetName string
+	HTTPClient         *http.Client
 
 	mu          sync.Mutex
 	lastETag    string
@@ -43,6 +44,12 @@ func NewGitHubProvider(repoSlug, assetName string, httpClient *http.Client) (*Gi
 		AssetName:  assetName,
 		HTTPClient: httpClient,
 	}, nil
+}
+
+// SetInstallerAssetName configures the optional installer asset filename to
+// look up alongside the portable binary. Pass empty string to disable.
+func (g *GitHubProvider) SetInstallerAssetName(name string) {
+	g.InstallerAssetName = name
 }
 
 func (g *GitHubProvider) Name() string { return "github" }
@@ -86,7 +93,7 @@ func (g *GitHubProvider) LatestRelease(ctx context.Context) (Release, error) {
 		return Release{}, fmt.Errorf("github: decode response: %w", err)
 	}
 
-	release, err := raw.toRelease(g.AssetName)
+	release, err := raw.toRelease(g.AssetName, g.InstallerAssetName)
 	if err != nil {
 		return Release{}, err
 	}
@@ -118,32 +125,47 @@ type githubAsset struct {
 	Size               int64  `json:"size"`
 }
 
-func (r githubRelease) toRelease(binaryName string) (Release, error) {
+func (r githubRelease) toRelease(binaryName, installerName string) (Release, error) {
 	if r.TagName == "" {
 		return Release{}, fmt.Errorf("github: response missing tag_name")
 	}
-	var binary, checksums *githubAsset
+	var binary, checksums, installer *githubAsset
 	for i := range r.Assets {
 		switch r.Assets[i].Name {
 		case binaryName:
 			binary = &r.Assets[i]
 		case ChecksumsAssetName:
 			checksums = &r.Assets[i]
+		case installerName:
+			if installerName != "" {
+				installer = &r.Assets[i]
+			}
 		}
 	}
-	if binary == nil {
-		return Release{}, fmt.Errorf("github: %w: %s in release %s", ErrAssetNotFound, binaryName, r.TagName)
-	}
+	// checksums.txt is required regardless of build kind: both portable and
+	// installer pathways verify SHA-256 against it. The portable binary and
+	// installer asset are BOTH optional at provider level — service.install
+	// dispatches by BuildKind and emits a pathway-specific error if the
+	// asset its kind needs is missing. This lets a publisher ship installer-
+	// only releases without breaking installer clients.
 	if checksums == nil {
 		return Release{}, fmt.Errorf("github: %w in release %s", ErrChecksumsNotFound, r.TagName)
 	}
-	return Release{
+	rel := Release{
 		Version:      r.TagName,
 		PublishedAt:  r.PublishedAt,
 		Notes:        r.Body,
-		AssetURL:     binary.URL,
-		AssetName:    binary.Name,
-		AssetSize:    binary.Size,
 		ChecksumsURL: checksums.URL,
-	}, nil
+	}
+	if binary != nil {
+		rel.AssetURL = binary.URL
+		rel.AssetName = binary.Name
+		rel.AssetSize = binary.Size
+	}
+	if installer != nil {
+		rel.InstallerAssetURL = installer.URL
+		rel.InstallerAssetName = installer.Name
+		rel.InstallerAssetSize = installer.Size
+	}
+	return rel, nil
 }

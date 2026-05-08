@@ -15,14 +15,21 @@ import (
 const defaultGitLabHost = "https://gitlab.com"
 
 type GitLabProvider struct {
-	Host       string
-	Project    string
-	AssetName  string
-	HTTPClient *http.Client
+	Host               string
+	Project            string
+	AssetName          string
+	InstallerAssetName string
+	HTTPClient         *http.Client
 
 	mu          sync.Mutex
 	lastETag    string
 	lastRelease *Release
+}
+
+// SetInstallerAssetName configures the optional installer asset filename to
+// look up alongside the portable binary. Pass empty string to disable.
+func (g *GitLabProvider) SetInstallerAssetName(name string) {
+	g.InstallerAssetName = name
 }
 
 func NewGitLabProvider(host, project, assetName string, httpClient *http.Client) (*GitLabProvider, error) {
@@ -90,7 +97,7 @@ func (g *GitLabProvider) LatestRelease(ctx context.Context) (Release, error) {
 		return Release{}, fmt.Errorf("gitlab: decode response: %w", err)
 	}
 
-	release, err := raw.toRelease(g.AssetName)
+	release, err := raw.toRelease(g.AssetName, g.InstallerAssetName)
 	if err != nil {
 		return Release{}, err
 	}
@@ -131,32 +138,44 @@ func (l gitlabLink) downloadURL() string {
 	return l.URL
 }
 
-func (r gitlabRelease) toRelease(binaryName string) (Release, error) {
+func (r gitlabRelease) toRelease(binaryName, installerName string) (Release, error) {
 	if r.TagName == "" {
 		return Release{}, fmt.Errorf("gitlab: response missing tag_name")
 	}
-	var binary, checksums *gitlabLink
+	var binary, checksums, installer *gitlabLink
 	for i := range r.Assets.Links {
 		switch r.Assets.Links[i].Name {
 		case binaryName:
 			binary = &r.Assets.Links[i]
 		case ChecksumsAssetName:
 			checksums = &r.Assets.Links[i]
+		case installerName:
+			if installerName != "" {
+				installer = &r.Assets.Links[i]
+			}
 		}
 	}
-	if binary == nil {
-		return Release{}, fmt.Errorf("gitlab: %w: %s in release %s", ErrAssetNotFound, binaryName, r.TagName)
-	}
+	// checksums.txt is required regardless of build kind. Portable + installer
+	// assets are both optional; see provider_github.go's toRelease for the
+	// full rationale.
 	if checksums == nil {
 		return Release{}, fmt.Errorf("gitlab: %w in release %s", ErrChecksumsNotFound, r.TagName)
 	}
-	return Release{
+	rel := Release{
 		Version:      r.TagName,
 		PublishedAt:  r.ReleasedAt,
 		Notes:        r.Description,
-		AssetURL:     binary.downloadURL(),
-		AssetName:    binary.Name,
-		AssetSize:    0,
 		ChecksumsURL: checksums.downloadURL(),
-	}, nil
+	}
+	if binary != nil {
+		rel.AssetURL = binary.downloadURL()
+		rel.AssetName = binary.Name
+		rel.AssetSize = 0
+	}
+	if installer != nil {
+		rel.InstallerAssetURL = installer.downloadURL()
+		rel.InstallerAssetName = installer.Name
+		rel.InstallerAssetSize = 0
+	}
+	return rel, nil
 }

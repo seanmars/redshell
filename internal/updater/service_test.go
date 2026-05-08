@@ -391,6 +391,47 @@ func TestService_InstallAvailableErrorsWhenNoCachedRelease(t *testing.T) {
 	}
 }
 
+// Portable client encountering an installer-only release: provider succeeds
+// (returns Release with empty AssetURL), check emits available, but install
+// dispatch errors before any download with a clear migration message.
+func TestService_PortableInstallErrorsWhenReleaseHasNoPortableAsset(t *testing.T) {
+	rel := Release{
+		Version: "v0.5.0",
+		// AssetURL/AssetName intentionally empty (installer-only release)
+		ChecksumsURL:       "https://example.invalid/checksums.txt",
+		InstallerAssetURL:  "https://example.invalid/installer.exe",
+		InstallerAssetName: "RedShell-amd64-installer.exe",
+	}
+	svc, rec, _ := newTestService(t, map[string]Provider{
+		preferences.AutoUpdateSourceGitHub: &fakeProvider{name: "github", release: rel},
+		preferences.AutoUpdateSourceGitLab: &fakeProvider{name: "gitlab", release: rel},
+	}, "v0.4.0")
+
+	svc.RunCheck(context.Background(), "manual")
+	if !contains(rec.names(), "updater:available") {
+		t.Fatalf("expected available event, got %v", rec.names())
+	}
+
+	err := svc.InstallAvailable(context.Background())
+	if err == nil {
+		t.Fatal("expected portable install to error on installer-only release")
+	}
+	if !errors.Is(err, ErrAssetNotFound) {
+		t.Fatalf("expected ErrAssetNotFound, got %v", err)
+	}
+	data, ok := rec.findFirst("updater:error")
+	if !ok {
+		t.Fatalf("expected updater:error event, got %v", rec.names())
+	}
+	m, _ := data.(map[string]any)
+	if m["stage"] != "download" {
+		t.Fatalf("error stage: got %v want download", m["stage"])
+	}
+	if svc.InProgress() {
+		t.Fatal("InProgress must remain false when install errors out before download")
+	}
+}
+
 func TestService_StartEmitsManualRequiredOnNonWritableDir(t *testing.T) {
 	prefs := newTestPrefs(t)
 	rec := &eventRecorder{}

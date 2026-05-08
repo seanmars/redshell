@@ -37,13 +37,19 @@ type SwapFunc func(currentPath, newPath string) error
 // exec.Command(exePath).Start(); tests inject a fake.
 type SpawnFunc func(exePath string) error
 
+// InstallerSpawnFunc launches the NSIS installer with elevation. Defaults
+// to SpawnInstaller (which uses ShellExecute "runas" on Windows). Tests
+// inject a fake to avoid actually invoking ShellExecute.
+type InstallerSpawnFunc func(installerPath string, args []string) error
+
 // Options are non-required dependencies of the Service. Any zero field is
 // filled with a production default at construction.
 type Options struct {
-	HTTPClient *http.Client
-	Now        func() time.Time
-	Swap       SwapFunc
-	Spawn      SpawnFunc
+	HTTPClient     *http.Client
+	Now            func() time.Time
+	Swap           SwapFunc
+	Spawn          SpawnFunc
+	InstallerSpawn InstallerSpawnFunc
 }
 
 // Service orchestrates the auto-update flow: periodic checks, install on
@@ -56,6 +62,7 @@ type Service struct {
 	providers      map[string]Provider
 	swap           SwapFunc
 	spawn          SpawnFunc
+	installerSpawn InstallerSpawnFunc
 	now            func() time.Time
 
 	emit       EventEmitter
@@ -136,6 +143,10 @@ func newServiceWithProviders(prefs *preferences.Service, runningVersion, exePath
 	if spawn == nil {
 		spawn = defaultSpawn
 	}
+	installerSpawn := opts.InstallerSpawn
+	if installerSpawn == nil {
+		installerSpawn = SpawnInstaller
+	}
 	au, _ := prefs.GetAutoUpdate()
 	return &Service{
 		prefs:          prefs,
@@ -145,6 +156,7 @@ func newServiceWithProviders(prefs *preferences.Service, runningVersion, exePath
 		providers:      providers,
 		swap:           swap,
 		spawn:          spawn,
+		installerSpawn: installerSpawn,
 		now:            now,
 		manualCheckCh:  make(chan struct{}, 1),
 		prefsChangedCh: make(chan struct{}, 1),
@@ -158,14 +170,20 @@ func newServiceWithProviders(prefs *preferences.Service, runningVersion, exePath
 
 func buildProviders(au preferences.AutoUpdate, httpClient *http.Client) (map[string]Provider, error) {
 	assetName := AssetNameFor(runtime.GOOS, runtime.GOARCH)
+	// Installer asset name is best-effort — only Windows AMD64 has one
+	// today. On unsupported OS/arch we leave it empty so providers don't
+	// look for a non-existent asset.
+	installerName, _ := InstallerAssetNameFor(runtime.GOOS, runtime.GOARCH)
 	gh, err := NewGitHubProvider(au.GithubRepo, assetName, httpClient)
 	if err != nil {
 		return nil, fmt.Errorf("build github provider: %w", err)
 	}
+	gh.SetInstallerAssetName(installerName)
 	gl, err := NewGitLabProvider(au.GitlabHost, au.GitlabProject, assetName, httpClient)
 	if err != nil {
 		return nil, fmt.Errorf("build gitlab provider: %w", err)
 	}
+	gl.SetInstallerAssetName(installerName)
 	return map[string]Provider{
 		preferences.AutoUpdateSourceGitHub: gh,
 		preferences.AutoUpdateSourceGitLab: gl,
@@ -203,7 +221,11 @@ func (s *Service) Start(ctx context.Context, emit EventEmitter, quitApp func()) 
 		})
 	}
 
-	if !IsWritable(filepath.Dir(s.exePath)) {
+	// The writability probe only applies to portable builds. Installer
+	// builds (BuildKind == "installer") use the elevated silent-install
+	// pathway, which does NOT need the install directory to be writable
+	// by the current user — UAC takes care of elevation at install time.
+	if IsPortable() && !IsWritable(filepath.Dir(s.exePath)) {
 		s.emit("updater:manual-required", map[string]any{
 			"reason":  "install directory is not writable by the current user",
 			"exePath": s.exePath,
@@ -306,6 +328,9 @@ type State struct {
 	SkipVersion     string   `json:"skipVersion"`
 	InProgress      bool     `json:"inProgress"`
 	ManualRequired  bool     `json:"manualRequired"`
+	// BuildKind is "portable" or "installer". The frontend uses it to gate
+	// install-pathway-specific copy (e.g. the UAC-prompt hint).
+	BuildKind string `json:"buildKind"`
 }
 
 // GetState returns the current service snapshot for UI consumption.
@@ -328,7 +353,11 @@ func (s *Service) GetState() State {
 		LatestAvailable: lastCopy,
 		SkipVersion:     au.SkipVersion,
 		InProgress:      s.inProgress.Load(),
-		ManualRequired:  !IsWritable(filepath.Dir(s.exePath)),
+		// ManualRequired only applies to portable builds. An installer build
+		// in Program Files is expected to fail the writability probe; that
+		// is normal, not a manual-required signal.
+		ManualRequired: IsPortable() && !IsWritable(filepath.Dir(s.exePath)),
+		BuildKind:      BuildKind,
 	}
 }
 
@@ -486,6 +515,22 @@ func (s *Service) install(ctx context.Context, rel Release) error {
 	if s.inProgress.Load() {
 		return errors.New("update already in progress")
 	}
+	if IsInstaller() {
+		return s.installInstaller(ctx, rel)
+	}
+
+	// Portable pathway requires the portable binary asset. Releases since
+	// the installer-only switch may omit it; surface that explicitly so the
+	// user knows they need to manually download the installer once to move
+	// off the portable build.
+	if rel.AssetURL == "" || rel.AssetName == "" {
+		err := fmt.Errorf("%w: portable asset not in release %s; this release ships installer-only — download the latest installer manually to migrate", ErrAssetNotFound, rel.Version)
+		s.emit("updater:error", map[string]any{
+			"stage":   "download",
+			"message": err.Error(),
+		})
+		return err
+	}
 
 	newPath := s.exePath + ".new"
 	progressFn := func(d, total int64) {
@@ -584,6 +629,139 @@ func (s *Service) install(ctx context.Context, rel Release) error {
 		s.emit("updater:error", map[string]any{
 			"stage":   "spawn",
 			"message": err.Error(),
+		})
+		return err
+	}
+
+	s.emit("updater:installed", map[string]any{"version": rel.Version})
+	s.quitApp()
+	return nil
+}
+
+// installInstaller is the installer-build pathway. It downloads the NSIS
+// installer asset, verifies its SHA-256 against checksums.txt, then spawns
+// it under a UAC-elevated `runas` shell verb with the silent install flag.
+// The order of operations is deliberate (see openspec change
+// enable-installer-build-updater design Decision 3 / 3b):
+//
+//  1. download + verify  (any failure: emit error, no quit)
+//  2. inProgress = true  (so the close intercept short-circuits while UAC shows)
+//  3. installerSpawn     (blocks until UAC accepted/declined)
+//  4. on decline/error: clear inProgress, emit error, return
+//  5. emit installed
+//  6. quitApp            (releases file lock so the elevated installer can
+//     overwrite RedShell.exe; NSIS Sleep at the top of the install Section
+//     absorbs the brief race)
+func (s *Service) installInstaller(ctx context.Context, rel Release) error {
+	if rel.InstallerAssetURL == "" || rel.InstallerAssetName == "" {
+		err := fmt.Errorf("%w (release %s)", ErrInstallerNotFound, rel.Version)
+		s.emit("updater:error", map[string]any{
+			"stage":   "installer-download",
+			"message": err.Error(),
+		})
+		return err
+	}
+
+	// Download to %TEMP% rather than next to the exe. For installer builds
+	// the install directory is Program Files (or similar admin-only path)
+	// — the running app at medium integrity cannot write there. UAC
+	// elevation happens AFTER download, so the destination must be a
+	// user-writable scratch location. The elevated installer child runs as
+	// the same user and can still read the file.
+	installerPath := installerDownloadPath()
+	progressFn := func(d, total int64) {
+		s.emit("updater:download-progress", map[string]any{
+			"bytesDownloaded": d,
+			"totalBytes":      total,
+		})
+	}
+
+	type binResult struct {
+		sha string
+		err error
+	}
+	type csResult struct {
+		body []byte
+		err  error
+	}
+	binCh := make(chan binResult, 1)
+	csCh := make(chan csResult, 1)
+
+	dlCtx, cancelDL := context.WithCancel(ctx)
+	defer cancelDL()
+
+	go func() {
+		sha, err := Download(dlCtx, s.httpClient, rel.InstallerAssetURL, installerPath, rel.InstallerAssetSize, progressFn)
+		binCh <- binResult{sha: sha, err: err}
+	}()
+	go func() {
+		body, err := downloadBytes(dlCtx, s.httpClient, rel.ChecksumsURL)
+		csCh <- csResult{body: body, err: err}
+	}()
+
+	bin := <-binCh
+	cs := <-csCh
+
+	if bin.err != nil {
+		_ = os.Remove(installerPath)
+		_ = os.Remove(installerPath + ".partial")
+		s.emit("updater:error", map[string]any{
+			"stage":   "installer-download",
+			"message": bin.err.Error(),
+		})
+		return bin.err
+	}
+	if cs.err != nil {
+		_ = os.Remove(installerPath)
+		s.emit("updater:error", map[string]any{
+			"stage":   "installer-download",
+			"message": "checksums: " + cs.err.Error(),
+		})
+		return cs.err
+	}
+
+	checksums, err := ParseChecksums(bytes.NewReader(cs.body))
+	if err != nil {
+		_ = os.Remove(installerPath)
+		s.emit("updater:error", map[string]any{
+			"stage":   "verify",
+			"message": "checksums file unavailable: " + err.Error(),
+		})
+		return err
+	}
+	expected, ok := checksums[rel.InstallerAssetName]
+	if !ok {
+		_ = os.Remove(installerPath)
+		err := fmt.Errorf("installer asset %q not listed in checksums", rel.InstallerAssetName)
+		s.emit("updater:error", map[string]any{
+			"stage":   "verify",
+			"message": err.Error(),
+		})
+		return err
+	}
+	if expected != bin.sha {
+		_ = os.Remove(installerPath)
+		err := fmt.Errorf("checksum mismatch for %s: expected %s, got %s", rel.InstallerAssetName, expected, bin.sha)
+		s.emit("updater:error", map[string]any{
+			"stage":   "verify",
+			"message": err.Error(),
+		})
+		return err
+	}
+
+	// Set inProgress BEFORE spawn — the UAC dialog blocks on the same
+	// goroutine and we want the close intercept to short-circuit during
+	// that window in case the user closes the app while the prompt is up.
+	s.inProgress.Store(true)
+	if err := s.installerSpawn(installerPath, []string{"/S"}); err != nil {
+		s.inProgress.Store(false)
+		message := err.Error()
+		if errors.Is(err, ErrUACDeclined) {
+			message = "user cancelled elevation"
+		}
+		s.emit("updater:error", map[string]any{
+			"stage":   "installer-spawn",
+			"message": message,
 		})
 		return err
 	}

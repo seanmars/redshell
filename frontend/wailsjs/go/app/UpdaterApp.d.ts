@@ -3,6 +3,10 @@
 import {updater} from '../models';
 import {context} from '../models';
 
+export function AutoUpdateAvailable():Promise<boolean>;
+
+export function BuildKind():Promise<string>;
+
 export function CheckNow():Promise<void>;
 
 export function GetState():Promise<updater.State>;

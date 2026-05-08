@@ -31,6 +31,9 @@ const peek = ref<updater.PeekResult | null>(null);
 const error = ref<string | null>(null);
 const progress = ref<DownloadProgress>({ bytes: 0, total: 0 });
 const manualRequired = ref(false);
+// 'portable' is the default until we have read State from the backend;
+// the installer pathway only activates after the first successful refreshState.
+const buildKind = ref<'portable' | 'installer'>('portable');
 
 let bootstrapped = false;
 
@@ -75,6 +78,9 @@ async function refreshState(): Promise<void> {
     const next = await GetState();
     state.value = next;
     manualRequired.value = next.manualRequired;
+    if (next.buildKind === 'installer' || next.buildKind === 'portable') {
+      buildKind.value = next.buildKind;
+    }
   } catch (e) {
     error.value = String(e);
   }
@@ -122,6 +128,7 @@ export function useUpdater() {
     error: readonly(error),
     progress: readonly(progress),
     manualRequired: readonly(manualRequired),
+    buildKind: readonly(buildKind),
     refreshState,
     checkNow,
     peekBoth,

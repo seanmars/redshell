@@ -51,6 +51,7 @@ func TestGitLabProvider_LatestReleaseHappyPath(t *testing.T) {
 		w.Header().Set("ETag", `"gl-abc"`)
 		w.Write(body)
 	})
+	p.SetInstallerAssetName("RedShell-amd64-installer.exe")
 
 	rel, err := p.LatestRelease(context.Background())
 	if err != nil {
@@ -77,6 +78,12 @@ func TestGitLabProvider_LatestReleaseHappyPath(t *testing.T) {
 	}
 	if rel.PublishedAt.IsZero() {
 		t.Fatal("PublishedAt should be parsed")
+	}
+	if rel.InstallerAssetName != "RedShell-amd64-installer.exe" {
+		t.Fatalf("InstallerAssetName: got %q want RedShell-amd64-installer.exe", rel.InstallerAssetName)
+	}
+	if !strings.HasSuffix(rel.InstallerAssetURL, "/RedShell-amd64-installer.exe") {
+		t.Fatalf("InstallerAssetURL unexpected: %q", rel.InstallerAssetURL)
 	}
 }
 
@@ -127,16 +134,25 @@ func TestGitLabProvider_MalformedJSONErrors(t *testing.T) {
 	}
 }
 
-func TestGitLabProvider_MissingBinaryAssetErrors(t *testing.T) {
+func TestGitLabProvider_MissingPortableAssetReturnsEmptyAssetFields(t *testing.T) {
+	// See TestGitHubProvider_MissingPortableAssetReturnsEmptyAssetFields
+	// for the rationale: installer-only releases don't ship the portable.
 	_, p := newGitlabServer(t, func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`{"tag_name":"v0.5.0","assets":{"links":[{"name":"checksums.txt","url":"https://example.com/c.txt"}]}}`))
+		w.Write([]byte(`{"tag_name":"v0.5.0","assets":{"links":[
+			{"name":"RedShell-amd64-installer.exe","url":"https://example.com/installer"},
+			{"name":"checksums.txt","url":"https://example.com/c.txt"}
+		]}}`))
 	})
-	_, err := p.LatestRelease(context.Background())
-	if err == nil {
-		t.Fatal("expected missing binary asset to error")
+	p.SetInstallerAssetName("RedShell-amd64-installer.exe")
+	rel, err := p.LatestRelease(context.Background())
+	if err != nil {
+		t.Fatalf("installer-only release should not error at provider level: %v", err)
 	}
-	if !errors.Is(err, ErrAssetNotFound) {
-		t.Fatalf("expected ErrAssetNotFound, got %v", err)
+	if rel.AssetURL != "" || rel.AssetName != "" {
+		t.Fatalf("portable fields should be empty when absent, got url=%q name=%q", rel.AssetURL, rel.AssetName)
+	}
+	if rel.InstallerAssetName != "RedShell-amd64-installer.exe" {
+		t.Fatalf("installer field should still be populated, got %q", rel.InstallerAssetName)
 	}
 }
 

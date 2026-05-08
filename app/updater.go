@@ -103,3 +103,20 @@ func (a *UpdaterApp) HandleTrayOpen() {
 func (a *UpdaterApp) ManualRequired() bool {
 	return a.svc.GetState().ManualRequired
 }
+
+// BuildKind exposes whether this binary is the portable or installer
+// variant. Frontend reads it via GetState() too; this accessor is provided
+// for main.go and other Go callers that don't need the full snapshot.
+func (a *UpdaterApp) BuildKind() string {
+	return updater.BuildKind
+}
+
+// AutoUpdateAvailable reports whether the in-app updater has a viable
+// install pathway in the current environment. True for installer builds
+// (which always have the silent-install pathway via UAC) and for portable
+// builds whose install directory is writable. False only for portable
+// builds in a non-writable directory. main.go uses this to decide whether
+// to register the tray "Check for Updates" item.
+func (a *UpdaterApp) AutoUpdateAvailable() bool {
+	return updater.IsInstaller() || !a.ManualRequired()
+}
