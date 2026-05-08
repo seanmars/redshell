@@ -82,6 +82,15 @@ FunctionEnd
 Section
     !insertmacro wails.setShellContext
 
+    # Give a previously-running RedShell (spawned us via the in-app updater
+    # with the runas verb) up to 2 seconds to release its OS lock on
+    # RedShell.exe before we try to overwrite the file. NSIS does not retry
+    # on file-in-use, so without this delay an updater-driven silent install
+    # races with the just-quitting parent process. Harmless for interactive
+    # installs because the user typically launches the installer with the
+    # app already closed.
+    Sleep 2000
+
     !insertmacro wails.webview2runtime
 
     SetOutPath $INSTDIR

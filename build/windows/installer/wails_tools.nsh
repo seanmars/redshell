@@ -14,7 +14,7 @@
     !define INFO_PRODUCTNAME "RedShell"
 !endif
 !ifndef INFO_PRODUCTVERSION
-    !define INFO_PRODUCTVERSION "0.7.0"
+    !define INFO_PRODUCTVERSION "0.6.0"
 !endif
 !ifndef INFO_COPYRIGHT
     !define INFO_COPYRIGHT "Copyright (c) 2026 seanmars"

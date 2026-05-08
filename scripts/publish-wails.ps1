@@ -283,33 +283,82 @@ if ($Clean -and (Test-Path -LiteralPath $binDir)) {
 # heuristic surface. Version is read at runtime from the embedded wails.json
 # (Set-WailsProductVersion below patches it in place before build), so no
 # `-X main.version` is required.
-$ldflags = "-s -w"
+#
+# The portable and installer variants need DIFFERENT BuildKind values baked
+# in (see internal/updater/buildkind.go). The portable build uses the
+# default `BuildKind = "portable"`. The installer build sets
+# `BuildKind = "installer"` via -X so the in-app updater takes the elevated
+# silent-install pathway instead of the rename-trick swap (which would
+# fail in Program Files).
+#
+# Note: the linker -X flag takes `importpath.Name=value` with NO inner
+# quoting — single quotes are bash escaping that PowerShell would pass
+# through literally and silently break the importpath parse, leaving the
+# binary at the default BuildKind value.
+$portableLdflags  = "-s -w"
+$installerLdflags = "-s -w -X redshell/internal/updater.BuildKind=installer"
 
-$wailsArgs = @(
-    'build',
-    '-platform', $Platform,
-    '-ldflags',  $ldflags,
-    '-webview2', $Webview2,
-    '-trimpath'
-)
+function Invoke-WailsBuild {
+    param(
+        [Parameter(Mandatory)][string]$Ldflags,
+        [Parameter(Mandatory)][bool]$IncludeNsis,
+        [Parameter(Mandatory)][string]$Label
+    )
+    $args = @(
+        'build',
+        '-platform', $Platform,
+        '-ldflags',  $Ldflags,
+        '-webview2', $Webview2,
+        '-trimpath'
+    )
+    if ($IncludeNsis)         { $args += '-nsis' }
+    if ($Obfuscated)          { $args += '-obfuscated' }
+    if ($SkipFrontendInstall) { $args += '-s' }
 
-if ($Clean)               { $wailsArgs += '-clean' }
-if ($Nsis)                { $wailsArgs += '-nsis' }
-if ($Obfuscated)          { $wailsArgs += '-obfuscated' }
-if ($SkipFrontendInstall) { $wailsArgs += '-s' }
+    Write-Host ""
+    Write-Host "[$Label] wails $($args -join ' ')"
+    Write-Host ""
+
+    & wails @args
+    if ($LASTEXITCODE -ne 0) {
+        throw "wails build [$Label] failed with exit code $LASTEXITCODE"
+    }
+}
 
 $wailsJsonPath = Join-Path $repoRoot 'wails.json'
 $originalWailsJson = Set-WailsProductVersion -WailsJsonPath $wailsJsonPath -Version $resolvedVersion
 
+# Clean once up front so the per-pass invocations don't need -clean (which
+# would wipe the installer artifact between the installer and portable passes).
+if ($Clean -and (Test-Path -LiteralPath $binDir)) {
+    Write-Host "Cleaning $binDir (already done above; safety re-check)"
+}
+
 Push-Location $repoRoot
 try {
-    Write-Host ""
-    Write-Host "wails $($wailsArgs -join ' ')"
-    Write-Host ""
-
-    & wails @wailsArgs
-    if ($LASTEXITCODE -ne 0) {
-        throw "wails build failed with exit code $LASTEXITCODE"
+    if ($Nsis -and $platformInfo.OS -eq 'windows') {
+        # Single pass: installer-only build.
+        #
+        # Releases ship the NSIS installer as the sole Windows artifact.
+        # Existing portable users can no longer in-app update; they need to
+        # download the installer manually once to migrate. The provider
+        # accepts the missing portable asset (returns Release with empty
+        # AssetURL) so installer clients still see the release; the portable
+        # install path emits a clear error pointing the user to manual
+        # installer download.
+        #
+        # The redshell.exe wails leaves in build/bin has BuildKind=installer
+        # baked in and is wrapped inside the NSIS installer. We deliberately
+        # do NOT publish that loose .exe — distributing it as if it were
+        # portable would mislead users into thinking they can run it without
+        # the installer, and its in-app updater would still try the
+        # elevated-install pathway from wherever they put it.
+        Invoke-WailsBuild -Ldflags $installerLdflags -IncludeNsis $true -Label 'installer'
+    } else {
+        # Non-Windows or explicitly -Nsis:$false. Linux/Mac don't have the
+        # installer pathway anyway (rename_other.go is a stub), and the
+        # -Nsis:$false flag is mainly an escape hatch for local testing.
+        Invoke-WailsBuild -Ldflags $portableLdflags -IncludeNsis $false -Label 'portable'
     }
 } finally {
     Set-Content -LiteralPath $wailsJsonPath -Value $originalWailsJson -Encoding utf8NoBOM -NoNewline
@@ -334,8 +383,18 @@ if ($Nsis -and $platformInfo.OS -eq 'windows') {
 }
 
 $artifacts = @()
-if (Test-Path -LiteralPath $exePath) { $artifacts += $exePath }
-if ($installerExe) { $artifacts += $installerExe }
+if ($Nsis -and $platformInfo.OS -eq 'windows') {
+    # Installer-only release: ship only the NSIS installer + checksums.
+    # The loose redshell.exe in build/bin is the BuildKind=installer binary
+    # already wrapped inside the installer; publishing it as portable would
+    # confuse users and break their in-app updater.
+    if (-not $installerExe) {
+        throw "Expected NSIS installer artifact not found in $binDir; cannot publish installer-only release."
+    }
+    $artifacts += $installerExe
+} else {
+    if (Test-Path -LiteralPath $exePath) { $artifacts += $exePath }
+}
 
 # Sign before any OutputDir copy so downstream artifacts inherit the signature.
 if ($signRequested) {

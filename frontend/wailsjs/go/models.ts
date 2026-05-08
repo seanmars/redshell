@@ -579,6 +579,9 @@ export namespace updater {
 	    assetName: string;
 	    assetSize: number;
 	    checksumsUrl: string;
+	    installerAssetUrl?: string;
+	    installerAssetName?: string;
+	    installerAssetSize?: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new Release(source);
@@ -593,6 +596,9 @@ export namespace updater {
 	        this.assetName = source["assetName"];
 	        this.assetSize = source["assetSize"];
 	        this.checksumsUrl = source["checksumsUrl"];
+	        this.installerAssetUrl = source["installerAssetUrl"];
+	        this.installerAssetName = source["installerAssetName"];
+	        this.installerAssetSize = source["installerAssetSize"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -658,6 +664,7 @@ export namespace updater {
 	    skipVersion: string;
 	    inProgress: boolean;
 	    manualRequired: boolean;
+	    buildKind: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new State(source);
@@ -674,6 +681,7 @@ export namespace updater {
 	        this.skipVersion = source["skipVersion"];
 	        this.inProgress = source["inProgress"];
 	        this.manualRequired = source["manualRequired"];
+	        this.buildKind = source["buildKind"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

@@ -5,6 +5,137 @@
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/),
 版本號採用 [Semantic Versioning](https://semver.org/lang/zh-TW/).
 
+## [0.8.0] - 2026-05-09
+
+### Added
+
+- Installer-kind 自動更新路徑: 為 NSIS 安裝版本新增獨立的 in-app 更新流程,
+  與 portable 版本共用同一個 release pipeline 與 `checksums.txt` 驗證,
+  但安裝步驟改為 ShellExecute `runas` + NSIS silent flag (`/S`).
+  - 新增 build-time discriminator `internal/updater.BuildKind`
+    (`portable` 為預設, `installer` 透過
+    `-ldflags "-X 'redshell/internal/updater.BuildKind=installer'"` 注入).
+    `Updater.GetState()` 暴露 `buildKind` 欄位給前端.
+  - 新增 `internal/updater/installer_install_windows.go`
+    (build-tag `windows`) 與 `internal/updater/installer_install_other.go`
+    (no-op stub), 透過 `ShellExecuteW` verb=`runas` 觸發單一 UAC 提示後執行
+    silent install. 使用者按下取消 (`ERROR_CANCELLED` / errno 1223) 時清除
+    in-progress flag 並 emit `updater:error` 事件.
+  - `internal/updater/service.go` 在 `Start()` 與 `install()` 依 `BuildKind`
+    分流: installer build 跳過 `IsWritable` 探測, 一律走 silent installer
+    路徑; portable build 維持原本的 rename-trick swap.
+  - Tray "Check for Updates" 選單與 `UpdatesTab.vue` 的 manual-required
+    banner 改以 `BuildKind` 而非寫入權判斷; installer 版本一律顯示更新動作,
+    並提示「更新會觸發 Windows UAC 視窗」.
+- NSIS 安裝程式調整 (`build/windows/installer/project.nsi`):
+  install section 開頭加入 `Sleep 2000` 給剛離開的 RedShell 釋放檔案鎖,
+  silent 模式 (`/S`) 結束後**不會**自動重啟 RedShell, 以避免
+  `RequestExecutionLevel admin` 把新程序也以 elevated token 啟動.
+- `scripts/publish-wails.ps1` 新增 `-Kind portable|installer` 參數,
+  installer 模式自動帶入 ldflags 並產生
+  `RedShell-amd64-installer.exe`, 與 portable 資產共用同一份
+  `checksums.txt`.
+
+### Changed
+
+- `internal/updater/cleanup.go` 一併清掉 installer build 殘留的
+  `redshell-installer.new` / `*.partial` 檔案.
+
+## [0.7.0] - 2026-05-08
+
+### Added
+
+- Session History 頁面 header 改成「session id + display name」雙列結構:
+  - 主 suffix 改為**完整 session id** (UUID 不截斷), 緊鄰一個
+    `AppCopyButton` (icon-only ghost button, 點擊後 icon 暫時切換並彈出
+    「Copied」toast).
+  - 當後端解析出與 session id 不同的 `displayName` 時, 於下一行以小字顯示
+    rich title; 若 displayName 為空或等於 session id (fallback case)
+    則整列省略.
+  - 新增 `AppResumeButton` 配合後端 `SessionHistoryApp.ResumeSession`,
+    透過 `cmd /c start "" pwsh -NoExit -NoProfile -Command "<agent>
+    --resume <id>"` 在**該 session 的 project cwd** 開啟新 pwsh 視窗,
+    並以 `cmd.Dir` (而非字串拼接) 傳入路徑避免 quoting 問題.
+    session id 以 `^[A-Za-z0-9_-]+$` 嚴格驗證, cwd 若不存在或非目錄則回傳
+    `ErrProjectCwdMissing`, 不開啟 terminal.
+  - `internal/sessionhistory/terminal_other.go` 在非 Windows 平台回傳
+    `ErrTerminalUnsupported` no-op.
+- `frontend/src/stores/sessionViewPrefs.ts`: 新增 `wrap` 偏好
+  (預設 `true`), 持久化於 `localStorage` `sessionView.wrap`,
+  控制 `SessionEventList` 與 Hooks 詳細面板長字串是否換行.
+- `internal/preferences` 新增 `AutoUpdate` 區塊
+  (`enabled`, `intervalHours`, `source`, `githubRepo`, `gitlabHost`,
+  `gitlabProject`, `skipVersion`, `lastCheckedAt`), 並接上 observer
+  通知讓 updater service 在偏好變動時即時 reschedule.
+- Windows 系統匣選單新增 "Check for Updates" 項目, 點擊開啟
+  Settings -> Updates tab.
+- 新增 `AppCopyButton`, `AppResumeButton`, `AppIcon` UI primitives,
+  維持 daisyUI `btn`/`btn-circle` 邊界規則.
+
+### Changed
+
+- `OnBeforeClose` 在 `Updater.InProgress()` 為 `true` 時跳過 close-behavior
+  prompt 與 minimize-to-tray 判斷, 讓 rename swap 期間可以乾淨退出.
+
+## [0.6.1] - 2026-05-08
+
+### Changed
+
+- 暫時於 `UpdatesTab.vue` 中關閉 GitLab provider 的 UI 入口
+  (radio button 與 side-by-side peek), 後端 `provider_gitlab` 程式碼保留
+  以利後續恢復. Reason: 在已知 host 設定流程下 GitLab API auth / asset
+  permalink 行為仍需更多打磨, 不阻擋 portable 版本 release.
+
+## [0.6.0] - 2026-05-08
+
+### Added
+
+- Portable Windows 自動更新器 (`internal/updater/`,
+  `app/updater.go`, `frontend/src/components/settings/UpdatesTab.vue`,
+  `frontend/src/composables/useUpdater.ts`): 背景輪詢使用者選擇的
+  release source (GitHub 或 GitLab), 以 semver 比對運行版本, 下載並驗證
+  asset 後以 rename-trick 取代執行檔.
+  - 排程: 啟動後 5 秒內若 `now - lastCheckedAt >= intervalHours` 即觸發
+    第一次檢查, 之後依 1 / 6 / 12 / 24 / 168 小時 ticker 再檢; 偏好停用
+    時完全不打 ticker. 手動 "Check for updates" 忽略 debounce.
+  - GitHub provider: `GET https://api.github.com/repos/<owner>/<repo>/releases/latest`,
+    Accept header 採 `application/octet-stream` 取資產二進位, 解出
+    OS/arch 對應 asset 與 `checksums.txt` URL.
+  - GitLab provider: `GET <host>/api/v4/projects/<URL-encoded(project)>/releases/permalink/latest`,
+    解出與 GitHub 一致的 `Release` 結構.
+  - 安全驗證: 強制下載 `checksums.txt` (`sha256sum` 格式), 以 streaming
+    SHA-256 比對下載檔案; mismatch / sidecar 缺失 / asset 未列入 sidecar
+    皆 abort 並 emit `updater:error`, **不會**回退到無驗證安裝.
+  - Rename-trick swap (`internal/updater/rename_windows.go`): 下載到
+    `redshell.exe.partial` -> verify -> 改名 `redshell.exe.new` -> 將執行中
+    `redshell.exe` 改為 `*.old` -> `*.new` 改為 `redshell.exe` ->
+    `exec.Command(...).Start()` detached -> `quitApp()`.
+    Process 啟動時 `cleanup.go` 會嘗試刪掉殘留的 `*.old` / `*.partial`,
+    失敗忽略.
+  - 寫入權探測: portable build 若所在目錄不可寫 (例如放在
+    `Program Files`), updater **不會**註冊 ticker, 改 emit
+    `updater:manual-required` 由 UI 顯示「請改用 portable 下載」.
+- Settings -> Updates tab: 切換來源 (radio), 選擇 interval, 顯示雙來源
+  side-by-side 最新版本 (peek 不會變更 active source 或 `lastCheckedAt`),
+  支援手動檢查與「Skipped」revoke. 偏好變更會立即 reschedule ticker.
+- 可用更新行為: toast / banner 提供 `Update Now` / `Skip This Version`
+  (寫入 `prefs.autoUpdate.skipVersion`) / `Later` (僅 dismiss) 三選擇.
+- 前端事件 (Wails runtime emit): `updater:check-started`,
+  `updater:available`, `updater:up-to-date`, `updater:download-progress`
+  (節流 250ms), `updater:installed`, `updater:error`,
+  `updater:manual-required`. `useUpdater` composable 統一訂閱.
+- Provider 抽象: `internal/updater/types.go` 定義 `Provider` interface
+  與 `InstallerAssetNameFor` helper, 測試以 `httptest.Server` + 注入
+  base directory 完整覆蓋, 不依賴實際 `api.github.com` 或 `gitlab.com`.
+- `golang.org/x/mod/semver` 加入 `go.mod`, 用於 prerelease-aware
+  版本比對.
+
+### Changed
+
+- GitHub provider 下載 asset 時改採 `Accept: application/octet-stream`
+  並改用 `assets[].url` 而非 `browser_download_url`, 避免 HTML redirect
+  路徑造成 streaming hash mismatch.
+
 ## [0.4.0] - 2026-05-07
 
 ### Added

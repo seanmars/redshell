@@ -95,7 +95,7 @@ func main() {
 				updaterApp.Startup(ctx)
 			}
 			if trayMgr.Available() {
-				if updaterApp != nil && !updaterApp.ManualRequired() {
+				if updaterApp != nil && updaterApp.AutoUpdateAvailable() {
 					trayMgr.SetCheckForUpdates(updaterApp.HandleTrayOpen)
 				}
 				if err := trayMgr.Start(ctx, preferencesSvc); err != nil {

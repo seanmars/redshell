@@ -3,6 +3,7 @@ import { onMounted, onBeforeUnmount, ref, watch } from 'vue';
 import SessionEventItem from './SessionEventItem.vue';
 import AppSpinner from '@/components/ui/AppSpinner.vue';
 import AppCheckbox from '@/components/ui/AppCheckbox.vue';
+import { useSessionViewPrefsStore } from '@/stores/sessionViewPrefs';
 import type { sessionhistory } from '@wailsjs/go/models';
 
 interface Props {
@@ -16,7 +17,7 @@ interface Props {
 const props = defineProps<Props>();
 const emit = defineEmits<{ loadMore: [] }>();
 
-const wrap = ref(true);
+const prefs = useSessionViewPrefsStore();
 
 const sentinel = ref<HTMLElement | null>(null);
 let observer: IntersectionObserver | null = null;
@@ -52,7 +53,7 @@ watch(
     <div
       class="flex items-center justify-end gap-3 px-3 py-1.5 border-b border-base-300/60 shrink-0"
     >
-      <AppCheckbox v-model="wrap" size="sm">
+      <AppCheckbox v-model="prefs.wrap" size="sm">
         <span class="text-xs opacity-80">Wrap long content</span>
       </AppCheckbox>
     </div>
@@ -66,9 +67,9 @@ watch(
 
     <div
       class="flex-1 overflow-y-auto px-2 py-2 space-y-1.5"
-      :class="wrap ? 'overflow-x-hidden' : 'overflow-x-auto'"
+      :class="prefs.wrap ? 'overflow-x-hidden' : 'overflow-x-auto'"
     >
-      <SessionEventItem v-for="ev in props.events" :key="ev.index" :event="ev" :wrap="wrap" />
+      <SessionEventItem v-for="ev in props.events" :key="ev.index" :event="ev" :wrap="prefs.wrap" />
 
       <div v-if="props.hasMore" ref="sentinel" class="py-4 flex justify-center">
         <AppSpinner v-if="props.loading" size="sm" />

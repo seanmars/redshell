@@ -146,9 +146,18 @@ function formatLastChecked(value: string | undefined): string {
 
 <template>
   <div class="space-y-4">
-    <AppAlert v-if="updater.manualRequired.value" type="warning">
-      This is an installed build (or the install directory is not writable). Auto-update is
-      disabled; download the portable build from your release page to enable in-app updates.
+    <AppAlert
+      v-if="updater.manualRequired.value && updater.buildKind.value === 'portable'"
+      type="warning"
+    >
+      This is a portable build placed in a directory that is not writable by the current user.
+      Auto-update is disabled; either move the binary to a writable folder, or download the latest
+      release manually.
+    </AppAlert>
+
+    <AppAlert v-if="updater.buildKind.value === 'installer'" type="info">
+      Updating will trigger a Windows UAC prompt. After the installer finishes, reopen RedShell from
+      your Start menu.
     </AppAlert>
 
     <AppCard>

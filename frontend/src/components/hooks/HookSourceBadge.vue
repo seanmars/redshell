@@ -27,7 +27,12 @@ const variant = computed(() => {
 </script>
 
 <template>
-  <AppBadge :variant="variant" :size="props.size">
+  <AppBadge
+    :variant="variant"
+    :size="props.size"
+    class="min-w-0 max-w-full whitespace-nowrap truncate"
+    :title="props.source.label"
+  >
     {{ props.source.label }}
   </AppBadge>
 </template>

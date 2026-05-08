@@ -1,8 +1,8 @@
 # RedShell Updater 設計文件
 
-本文件記錄 RedShell 的「可攜版自動更新」(Portable Auto-Updater) 全部流程、規則與架構, 對應 `internal/updater/`, `app/updater.go`, 以及前端 `useUpdater` / `UpdatesTab` / `UpdateAvailableBanner`.
+本文件記錄 RedShell 的「自動更新」(Auto-Updater) 全部流程、規則與架構, 對應 `internal/updater/`, `app/updater.go`, 以及前端 `useUpdater` / `UpdatesTab` / `UpdateAvailableBanner`.
 
-> 適用範圍: Windows 可攜版 (portable) 二進位. NSIS installer 安裝版會被偵測為「無法寫入安裝目錄」, 自動關閉更新功能並提示手動更新. macOS / Linux 在 v1 不支援, 由 build tag 提供 no-op stub.
+> 適用範圍: Windows 可攜版 (portable) 與 NSIS installer 安裝版二進位. Portable 走 rename trick, installer 走 elevated silent-install (UAC). 由建置時 `BuildKind` ldflag 區分, 詳見 §23. macOS / Linux 在 v1 不支援, 由 build tag 提供 no-op stub.
 
 ---
 
@@ -325,10 +325,14 @@ func Swap(currentPath, newPath string) error {
 
 | 檔名 | 來源 |
 |---|---|
-| `<exe>.old`        | 上一次 swap 留下的舊版二進位. 新 process 啟動時舊 process 已退出, 因此可刪. |
-| `<exe>.new`        | 已驗證但未 swap 的下載 (例: post-verify crash). |
-| `<exe>.new.partial`| 中斷中的下載. |
-| `<exe>.partial`    | 防禦性: 舊版本可能直接寫到這個檔名. |
+| `<exe>.old`                            | 上一次 swap 留下的舊版二進位. 新 process 啟動時舊 process 已退出, 因此可刪. |
+| `<exe>.new`                            | 已驗證但未 swap 的下載 (例: post-verify crash). |
+| `<exe>.new.partial`                    | 中斷中的 portable 下載. |
+| `<exe>.partial`                        | 防禦性: 舊版本可能直接寫到這個檔名. |
+| `%TEMP%\redshell-installer.exe`         | 已驗證或已 spawn 但仍留下的 installer payload (UAC 拒絕後 / installer 完成後). |
+| `%TEMP%\redshell-installer.exe.partial` | 中斷中的 installer 下載. |
+| `%TEMP%\redshell-installer.new`         | 舊版本 (副檔名 bug 修掉之前) 留下的, 防禦性清掉. |
+| `%TEMP%\redshell-installer.new.partial` | 同上. |
 
 `os.ErrNotExist` 一律靜默忽略; 其他 error 則 bubble 出來, 由 service 包成 `updater:error` (stage=cleanup) emit, 但 **不阻擋啟動**.
 
@@ -525,7 +529,6 @@ sha256sum redshell-windows-amd64.exe RedShell-amd64-installer.exe > checksums.tx
 ## 20. 不在範圍 (v1)
 
 * macOS / Linux 的 portable replacement (`rename_other.go` 直接回 `ErrPlatformUnsupported`).
-* Installer 安裝版本的更新 (偵測為 manual-required, 提示使用者下載 portable).
 * Differential / binary-patch 更新.
 * Beta / nightly / canary release channels (僅 `latest`).
 * 失敗自動 rollback (失敗時 `.old` 與原檔同時保留, 文件記載恢復方法為刪 `.old`).
@@ -556,3 +559,142 @@ sha256sum redshell-windows-amd64.exe RedShell-amd64-installer.exe > checksums.tx
 * 改變資產檔名規則: 只動 `internal/updater/types.go` 的 `AssetNameFor`. Provider 不需改, 因為它們吃 `AssetName` 字串.
 * 改變 in-progress 行為 (例: 想加進度 modal): 在 `useUpdater` 把 `installing` / `downloading` 狀態接到 `AppModal`, 不需動 backend.
 * 改變 OS 支援: 加 `rename_<os>.go` build-tag 檔, 實作 `Swap(currentPath, newPath) error`. 其他層不變.
+
+---
+
+## 23. Installer 安裝版自動更新
+
+從 v0.7+ 開始, NSIS installer 安裝版也支援 in-app 自動更新, 走的不是 portable 的 rename trick, 而是「下載新 installer + UAC elevated silent install」.
+
+### 23.1 BuildKind 識別
+
+由 `internal/updater/buildkind.go` 的 package 變數 `BuildKind` 識別當前二進位是哪種版本:
+
+* `"portable"` (預設, 不傳 ldflag) -> 走 rename swap.
+* `"installer"` (建置時 `-ldflags "-X 'redshell/internal/updater.BuildKind=installer'"`) -> 走 elevated silent install.
+* 其他值 -> 安全 fallback 為 `"portable"`.
+
+`IsInstaller()` / `IsPortable()` helper 取代字串比對, 所有需要分流的地方 (Service.Start, install dispatch, GetState, tray gating) 都用 helper.
+
+### 23.2 建置 installer 版本 (預設, installer-only)
+
+從 v0.7.x 開始, Windows 只發 installer 版本, 不再附 portable binary. `scripts/publish-wails.ps1` 預設 `-Nsis:$true` 一次出:
+
+* `RedShell-amd64-installer.exe` — NSIS 安裝檔 (內含 BuildKind=installer 的 binary).
+* `checksums.txt` — SHA-256 sidecar.
+
+```pwsh
+pwsh ./scripts/publish-wails.ps1
+```
+
+build 流程:
+
+1. 一次 `wails build -nsis -ldflags "-s -w -X redshell/internal/updater.BuildKind=installer"`.
+2. dist staging 只複製 NSIS installer + 寫 checksums.txt. **不**輸出 `redshell.exe` (那顆已經被包進 installer, 而且 BuildKind 是 installer; 當作 portable 散布會誤導使用者, 而且他們的 in-app updater 還是會走 elevated install pathway).
+
+**重要陷阱**: `-X` flag 不可加引號. `"-X 'redshell/internal/updater.BuildKind=installer'"` 在 PowerShell 會把單引號當字面字元傳給 linker, importpath parse 失敗, **靜默** fallback 為 `"portable"`. 必須寫成 `"-X redshell/internal/updater.BuildKind=installer"` (無內層引號).
+
+驗證方法 (publish 完之後):
+
+```pwsh
+Select-String -Path build/bin/RedShell-amd64-installer.exe -Pattern 'installer' -SimpleMatch
+```
+
+如果 binary 內找不到字串 `installer` 對應 BuildKind 變數, 表示 ldflag 沒生效, installer 安裝後 in-app updater 會誤判為 portable, 在 `Program Files` 跑時會顯示「This is a portable build placed in a directory that is not writable」警告.
+
+#### 例外: 開發或測試需要 portable binary
+
+如果暫時要產 portable (本地測 dev 流程, 或為非 Windows 平台 build), 加 `-Nsis:$false`:
+
+```pwsh
+pwsh ./scripts/publish-wails.ps1 -Nsis:$false
+```
+
+這條路 BuildKind 留在 `"portable"`, 走 rename-trick swap. 不應該用於正式 release.
+
+### 23.3 Provider 對 portable asset 的處理 (installer-only release)
+
+Provider (`provider_github.go` / `provider_gitlab.go` 的 `toRelease`) 把 portable + installer 兩個 asset 都當 **optional**:
+
+* `checksums.txt` 必有 (兩條 pathway 都要 SHA verify).
+* `redshell-windows-amd64.exe` (portable asset) — optional. 缺了不會錯, 只是 `Release.AssetURL` 留空.
+* `RedShell-amd64-installer.exe` (installer asset) — optional. 缺了不會錯, 只是 `Release.InstallerAssetURL` 留空.
+
+Install dispatch (`service.install`) 在 `BuildKind` 對應的 pathway 開頭檢查需要的 asset 是否存在; 不存在就 emit `updater:error` (`stage="download"` for portable, `stage="installer-download"` for installer) 並中止. 這個設計讓:
+
+* Installer-only release 對 installer client 完全可用.
+* 還在用舊 portable build 的使用者觸發 update 時看到 clear error: 「portable asset not in release vX.Y.Z; this release ships installer-only — download the latest installer manually to migrate」, 知道要手動下載 installer 一次.
+
+### 23.4 安裝流程
+
+按下「Update Now」之後:
+
+1. 從 active source 取得當前 `Release`. Release 結構額外帶 `InstallerAssetURL` / `InstallerAssetName` / `InstallerAssetSize` 三個欄位; 由 provider 在解析 release JSON 時順便填入. 缺少 -> emit `updater:error` (stage `installer-download`) 並中止.
+2. 並行下載 installer 二進位至 `%TEMP%\redshell-installer.exe` 與 `checksums.txt`. 兩個重要規則:
+   - **位置**: 必須寫到使用者可寫位置 (`os.TempDir()`), 不能寫到 `<exe-dir>` — installer 版本的 exe 位於 `Program Files`, running app 沒有 admin 權限, 寫到那邊會 `Access is denied`. UAC 提權發生在下載完成 *之後*; 提權後的 child 仍可讀 `%TEMP%` (同 user, 只是換 token).
+   - **副檔名**: 必須是 `.exe`. `ShellExecute` 是 verb-driven + extension-driven, 它會去 registry 找「`.<ext>` + `<verb>` 的 handler」; `.exe` 一定有, 但其他副檔名 (例如 `.new`) 會回 `SE_ERR_NOASSOC` ("No application is associated with the specified file for this operation"), 即使檔案本身是合法 PE binary 也一樣. Portable 走 `os.Rename + exec.Command` -> `CreateProcess` 看 PE header 不看副檔名, 所以沒這個問題.
+3. 對 `RedShell-amd64-installer.exe` 在 checksums 內查 SHA-256, 與下載的串流 hash 比對. 不符 -> 刪檔, emit `updater:error` (stage `verify`).
+4. 設 `inProgress = true` (放在 spawn 之前, 因為 UAC 對話框會 block 同 goroutine, close intercept 必須在那段時間 short-circuit).
+5. 呼叫 `installerSpawn(installerPath, []string{"/S"})`. 在 Windows 上是 `golang.org/x/sys/windows.ShellExecute(0, "runas", path, "/S", nil, SW_SHOW)`, 觸發 UAC 對話框.
+   * 使用者按「是」 -> 系統建立 elevated process, ShellExecute 回 nil. 我們 emit `updater:installed` 後 `quitApp()` 釋放檔案 lock.
+   * 使用者按「否」 -> 回 `syscall.Errno(1223)` (`ERROR_CANCELLED`), 包裝為 `ErrUACDeclined`. 清 `inProgress`, emit `updater:error` (stage `installer-spawn`, message `"user cancelled elevation"`), 不 quit.
+6. NSIS installer 以 `/S` 旗標靜默執行, 在 install Section 開頭有 `Sleep 2000` (見 `build/windows/installer/project.nsi`), 給剛 quit 的 RedShell 時間釋放檔案 lock 後才覆寫 `RedShell.exe`.
+7. installer 完成後**不會自動重啟 RedShell** (見 §23.5), 使用者從開始功能表 / 桌面捷徑重開即可.
+
+### 23.5 與 portable 流程的差異對照
+
+| 階段 | Portable | Installer |
+|---|---|---|
+| 寫入路徑可寫性 | 需要寫得進 `filepath.Dir(exePath)`, 否則 `manual-required` | 不需要; 由 UAC 帶 admin 權限 |
+| 下載資產 | `redshell-windows-amd64.exe` | `RedShell-amd64-installer.exe` |
+| 寫入位置 | `<exe>.new.partial` -> `<exe>.new` | `<exe-dir>\redshell-installer.new.partial` -> `<exe-dir>\redshell-installer.new` |
+| 換檔機制 | rename trick (允許在執行中 rename `.exe`) | NSIS installer 覆寫 (需 admin) |
+| 重啟機制 | `defaultSpawn(exePath)` 直接 `exec.Command().Start()` | 使用者手動從開始功能表重開 |
+| 進入 in-progress 時機 | swap 之前 | spawn 之前 (UAC 對話框 block 期間) |
+| 失敗 stage | `download` / `verify` / `rename` / `spawn` | `installer-download` / `verify` / `installer-spawn` |
+
+### 23.6 為何不在 silent install 結尾自動重啟
+
+`build/windows/installer/wails_tools.nsh` 已經宣告 `RequestExecutionLevel "admin"`, 因此 installer 永遠 elevated 執行. 如果在 install Section 結尾加 `Exec '"$INSTDIR\RedShell.exe"'`, NSIS 用 `CreateProcess` 帶**parent 的 elevated token**, 重新啟動的 RedShell 會繼承 admin 權限. 這會: WebView2 sandbox 行為改變、檔案寫入落到 admin-only 位置、使用者沒有任何視覺提示自己跑在 admin 模式. 所以 v1 直接放棄自動重啟; 使用者按一下開始功能表是可接受成本.
+
+未來若想做自動重啟, 可考慮:
+* 在 RedShell quit 之前先 spawn 一個非 elevated launcher (cmd.exe 或 tiny Go helper), 由它 poll 兩個 PID 結束後再啟動 RedShell.
+* 用 NSIS `UAC` 或 `ShellExecAsUser` plugin 在 installer 內 de-elevate 後啟動.
+
+### 23.7 Tray gating 變動
+
+`main.go`:
+
+```go
+if updaterApp != nil && updaterApp.AutoUpdateAvailable() {
+    trayMgr.SetCheckForUpdates(updaterApp.HandleTrayOpen)
+}
+```
+
+`AutoUpdateAvailable() = IsInstaller() || !ManualRequired()`. 因此:
+
+* Portable 在可寫目錄 -> 註冊 tray 項目.
+* Portable 在不可寫目錄 -> 不註冊 (manual-required).
+* Installer (永遠) -> 註冊.
+
+### 23.8 `ManualRequired` 語意收緊
+
+舊版: `ManualRequired = !IsWritable(exeDir)`.
+新版: `ManualRequired = IsPortable() && !IsWritable(exeDir)`.
+
+Installer 版本永遠回 `false`, 即使在 `Program Files`. 前端 `UpdatesTab.vue` 的警告 alert 也跟著改 `manualRequired && buildKind === 'portable'`, 並對 installer 版本顯示一行 info alert 提醒會有 UAC 提示.
+
+### 23.9 Release-step 檢查
+
+每次 release 出 installer 版本時, 建議的人工驗證步驟:
+
+```pwsh
+strings build\bin\RedShell-amd64-installer.exe | Select-String "BuildKind"
+```
+
+確認字串 `installer` 有被 linker 替換進二進位; 沒有則代表 ldflag 漏帶, installer 版本會 fallback 為 portable, 在 `Program Files` 跑時會誤判為 manual-required.
+
+### 23.10 從舊版 installer / portable 升級到 installer-only
+
+* 舊版 installer (尚未支援 in-app 更新) 上的使用者: 無法直接從 in-app 觸發升到第一個支援自動更新的版本. 需要手動下載一次新 installer 安裝. 從那個版本開始, 後續更新都走 in-app.
+* 舊版 portable (BuildKind=portable) 使用者在 installer-only 切換之後: in-app updater 會 emit `[download] portable asset not in release vX.Y.Z` 並中止. UI 上會看到清楚的錯誤訊息提示「download the latest installer manually to migrate」. 使用者下載 installer 安裝後, BuildKind 變 installer, 之後就走 in-app 更新.
