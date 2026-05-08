@@ -47,7 +47,7 @@ async function handleClick() {
 <template>
   <button
     type="button"
-    class="btn btn-ghost btn-circle"
+    class="btn btn-outline btn-square"
     :class="sizeClass[props.size]"
     :title="props.tooltip"
     :aria-label="props.tooltip"

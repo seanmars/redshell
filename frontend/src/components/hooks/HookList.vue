@@ -87,9 +87,11 @@ const sortedEvents = (m: Map<string, hooks.Hook[]>): string[] => {
       :default-open="block.source.kind === 'user'"
     >
       <template #title>
-        <div class="flex items-center gap-2 min-w-0">
-          <HookSourceBadge :source="block.source" size="sm" />
-          <span class="text-xs text-base-content/55 truncate">
+        <div class="flex flex-col gap-1 min-w-0">
+          <div class="flex min-w-0">
+            <HookSourceBadge :source="block.source" size="sm" />
+          </div>
+          <span class="text-xs text-base-content/55 truncate" :title="block.source.path">
             {{ block.source.path }}
           </span>
         </div>
