@@ -6,6 +6,8 @@ import PageContainer from '@/layouts/PageContainer.vue';
 import AppTabs from '@/components/ui/AppTabs.vue';
 import AppTab from '@/components/ui/AppTab.vue';
 import AppEmptyState from '@/components/ui/AppEmptyState.vue';
+import AppCopyButton from '@/components/ui/AppCopyButton.vue';
+import AppResumeButton from '@/components/ui/AppResumeButton.vue';
 import SessionList from '@/components/sessions/SessionList.vue';
 import SessionEventList from '@/components/sessions/SessionEventList.vue';
 import { useAgentStore } from '@/stores/agent';
@@ -67,14 +69,24 @@ function handleSelect(agentID: string, sessionID: string) {
   store.selectSession(agentID, sessionID);
 }
 
-const titleSuffix = computed(() => store.displayTitle ?? '');
+function basename(id: string): string {
+  return id.includes('/') ? id.slice(id.lastIndexOf('/') + 1) : id;
+}
+
+const shortSessionID = computed(() => basename(store.currentSessionID));
+
+const showDisplayName = computed(() => {
+  const id = shortSessionID.value;
+  const name = store.currentDisplayName;
+  return name !== '' && name !== id && !id.startsWith(name);
+});
 
 const showTabs = computed(() => enabledAgents.value.length > 1);
 </script>
 
 <template>
   <DefaultLayout>
-    <PageContainer title="Session History" :title-suffix="titleSuffix" max-width="max-w-7xl" fill>
+    <PageContainer title="Session History" max-width="max-w-7xl" fill>
       <AppEmptyState
         v-if="enabledAgents.length === 0"
         icon="installed"
@@ -87,6 +99,31 @@ const showTabs = computed(() => enabledAgents.value.length > 1);
       </AppEmptyState>
 
       <template v-else>
+        <div
+          v-if="store.currentSessionID"
+          class="flex flex-col gap-y-0.5 mb-3 px-1 h-14 shrink-0"
+          data-testid="session-info-bar"
+        >
+          <div class="flex items-center gap-2 break-all">
+            <span class="text-base font-medium font-mono opacity-90">{{ shortSessionID }}</span>
+            <AppCopyButton :text="shortSessionID" tooltip="Copy session id" size="sm" />
+            <AppResumeButton
+              :agent-id="store.currentAgent"
+              :session-id="shortSessionID"
+              :cwd="store.currentMeta?.cwd ?? ''"
+              tooltip="Resume session in terminal"
+              size="sm"
+            />
+          </div>
+          <div
+            v-if="showDisplayName"
+            class="text-sm opacity-60 break-words leading-tight"
+            data-testid="session-display-name"
+          >
+            {{ store.currentDisplayName }}
+          </div>
+        </div>
+
         <AppTabs
           v-if="showTabs"
           :active="activeAgent"

@@ -6,6 +6,8 @@ export type IconName =
   | 'sessions'
   | 'hooks'
   | 'check'
+  | 'copy'
+  | 'terminal'
   | 'sun'
   | 'moon'
   | 'plus'
@@ -22,6 +24,8 @@ const mdiByName: Record<IconName, string> = {
   sessions: 'mdi:history',
   hooks: 'mdi:hook',
   check: 'mdi:check-bold',
+  copy: 'mdi:content-copy',
+  terminal: 'mdi:console-line',
   sun: 'mdi:white-balance-sunny',
   moon: 'mdi:weather-night',
   plus: 'mdi:plus',

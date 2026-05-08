@@ -33,3 +33,14 @@ func (a *SessionHistoryApp) SessionMeta(agentID, sessionID string) (sessionhisto
 func (a *SessionHistoryApp) ListEvents(agentID, sessionID string, offset, limit int) (sessionhistory.EventPage, error) {
 	return a.svc.ListEvents(agentID, sessionID, offset, limit)
 }
+
+// ResumeSession opens a new pwsh window and runs `<agent-cli> --resume <id>`
+// for the given session, with its working directory set to `cwd` (the
+// session's project directory). The sessionID may be the path-prefixed
+// Claude shape or a bare Copilot UUID; the service extracts the basename and
+// validates it strictly before invocation. The cwd is sanitized — if absent,
+// not absolute, or non-existent, the spawned terminal falls back to the
+// default working directory.
+func (a *SessionHistoryApp) ResumeSession(agentID, sessionID, cwd string) error {
+	return a.svc.ResumeSession(agentID, sessionID, cwd)
+}

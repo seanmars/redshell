@@ -10,6 +10,10 @@ export function ListSessions(arg1) {
   return window['go']['app']['SessionHistoryApp']['ListSessions'](arg1);
 }
 
+export function ResumeSession(arg1, arg2, arg3) {
+  return window['go']['app']['SessionHistoryApp']['ResumeSession'](arg1, arg2, arg3);
+}
+
 export function SessionMeta(arg1, arg2) {
   return window['go']['app']['SessionHistoryApp']['SessionMeta'](arg1, arg2);
 }

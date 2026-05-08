@@ -29,10 +29,7 @@ export const useSessionHistoryStore = defineStore('sessionHistory', () => {
    */
   let selectionToken = 0;
 
-  const displayTitle = computed(() => {
-    if (!currentMeta.value) return null;
-    return currentMeta.value.displayName || currentMeta.value.sessionID;
-  });
+  const currentDisplayName = computed(() => currentMeta.value?.displayName ?? '');
 
   async function fetchListing(agentID: string) {
     listingLoading.value = { ...listingLoading.value, [agentID]: true };
@@ -127,7 +124,7 @@ export const useSessionHistoryStore = defineStore('sessionHistory', () => {
     currentAgent,
     currentSessionID,
     currentMeta,
-    displayTitle,
+    currentDisplayName,
     events,
     total,
     hasMore,

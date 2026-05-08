@@ -84,11 +84,31 @@ describe('useSessionHistoryStore', () => {
     const store = useSessionHistoryStore();
     await store.selectSession('copilot', 's1');
     expect(store.currentMeta?.displayName).toBe('One');
+    expect(store.currentDisplayName).toBe('One');
     expect(store.events).toHaveLength(50);
     expect(store.hasMore).toBe(true);
     expect(store.total).toBe(250);
     expect(mockSessionMeta).toHaveBeenCalledOnce();
     expect(mockListEvents).toHaveBeenCalledOnce();
+  });
+
+  it('currentDisplayName is empty string when meta has no displayName', async () => {
+    mockSessionMeta.mockResolvedValue({
+      agentID: 'copilot',
+      sessionID: 's1',
+      displayName: '',
+      hasEvents: true,
+    } as never);
+    mockListEvents.mockResolvedValue(fakePage(0, 5, false, 5) as never);
+    const store = useSessionHistoryStore();
+    await store.selectSession('copilot', 's1');
+    expect(store.currentDisplayName).toBe('');
+    expect(store.currentSessionID).toBe('s1');
+  });
+
+  it('currentDisplayName is empty string before any selection', () => {
+    const store = useSessionHistoryStore();
+    expect(store.currentDisplayName).toBe('');
   });
 
   it('loadNextPage appends events and stops when hasMore is false', async () => {

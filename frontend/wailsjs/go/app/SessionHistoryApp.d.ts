@@ -6,4 +6,6 @@ export function ListEvents(arg1:string,arg2:string,arg3:number,arg4:number):Prom
 
 export function ListSessions(arg1:string):Promise<sessionhistory.Listing>;
 
+export function ResumeSession(arg1:string,arg2:string,arg3:string):Promise<void>;
+
 export function SessionMeta(arg1:string,arg2:string):Promise<sessionhistory.SessionMeta>;
