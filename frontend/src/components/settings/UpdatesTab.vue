@@ -20,6 +20,9 @@ const updater = useUpdater();
 const prefs = usePreferencesStore();
 const toast = useToast();
 
+// Temporarily hide GitLab from the UI. Flip to true to restore.
+const GITLAB_ENABLED = false;
+
 const peeking = ref(false);
 const checking = ref(false);
 const installing = ref(false);
@@ -38,6 +41,14 @@ const isSkipped = computed(() => {
 
 onMounted(async () => {
   await Promise.all([prefs.loadAutoUpdate(), updater.refreshState()]);
+  if (!GITLAB_ENABLED && autoUpdate.value?.source === 'gitlab') {
+    try {
+      await prefs.setAutoUpdateSource('github');
+      await updater.refreshState();
+    } catch (e) {
+      toast.push({ type: 'error', message: String(e) });
+    }
+  }
   peekBoth();
 });
 
@@ -178,7 +189,11 @@ function formatLastChecked(value: string | undefined): string {
         <div>
           <div class="font-semibold">Release sources</div>
           <div class="text-sm opacity-70">
-            Pick one as the active source for background polling. Both queried below for comparison.
+            {{
+              GITLAB_ENABLED
+                ? 'Pick one as the active source for background polling. Both queried below for comparison.'
+                : 'GitHub is the active source for background polling.'
+            }}
           </div>
         </div>
         <AppButton variant="ghost" size="sm" :loading="peeking" @click="peekBoth">
@@ -187,7 +202,7 @@ function formatLastChecked(value: string | undefined): string {
         </AppButton>
       </div>
 
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+      <div :class="['grid', 'grid-cols-1', 'gap-3', GITLAB_ENABLED ? 'md:grid-cols-2' : '']">
         <AppCard>
           <div class="flex items-center justify-between gap-2 mb-2">
             <div class="flex items-center gap-2 font-medium">
@@ -218,7 +233,7 @@ function formatLastChecked(value: string | undefined): string {
           <div v-else class="text-sm opacity-50">No data</div>
         </AppCard>
 
-        <AppCard>
+        <AppCard v-if="GITLAB_ENABLED">
           <div class="flex items-center justify-between gap-2 mb-2">
             <div class="flex items-center gap-2 font-medium">
               GitLab
