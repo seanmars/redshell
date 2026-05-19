@@ -31,6 +31,7 @@ type InstalledPlugin struct {
 	UninstallName   string `json:"uninstallName"`
 	Agent           string `json:"agent"`
 	MarketplaceName string `json:"marketplaceName"`
+	Version         string `json:"version,omitempty"`
 }
 
 type FetchAllResult struct {
@@ -225,6 +226,21 @@ func (s *Service) Uninstall(agentID, pluginID string) error {
 		return err
 	}
 	return runAgentCmd(agentID, []string{"plugin", "uninstall", pluginID})
+}
+
+func (s *Service) UpdatePlugin(agentID, installName string, logFn func(string)) error {
+	if logFn == nil {
+		logFn = func(string) {}
+	}
+	if strings.TrimSpace(installName) == "" {
+		return fmt.Errorf("installName is required")
+	}
+	if err := s.ensureAgentEnabled(agentID); err != nil {
+		return err
+	}
+	prefix := "[" + agentID + "] "
+	stream := func(line string) { logFn(prefix + line) }
+	return runAgentCmdStreaming(agentID, []string{"plugin", "update", installName}, stream)
 }
 
 func (s *Service) UpdateAgentMarketplace(agentID string, logFn func(string)) AgentUpdateOutcome {
@@ -431,13 +447,16 @@ func readClaudeInstalled(home string) ([]InstalledPlugin, error) {
 		return nil, err
 	}
 	var cfg struct {
-		Plugins map[string]json.RawMessage `json:"plugins"`
+		Plugins map[string][]struct {
+			Scope   string `json:"scope"`
+			Version string `json:"version"`
+		} `json:"plugins"`
 	}
 	if err := json.Unmarshal(data, &cfg); err != nil {
 		return nil, err
 	}
 	result := make([]InstalledPlugin, 0, len(cfg.Plugins))
-	for key := range cfg.Plugins {
+	for key, entries := range cfg.Plugins {
 		var mktName string
 		if idx := strings.LastIndex(key, "@"); idx >= 0 {
 			mktName = key[idx+1:]
@@ -447,9 +466,30 @@ func readClaudeInstalled(home string) ([]InstalledPlugin, error) {
 			UninstallName:   key,
 			Agent:           "claude",
 			MarketplaceName: mktName,
+			Version:         pickClaudeVersion(entries),
 		})
 	}
 	return result, nil
+}
+
+func pickClaudeVersion(entries []struct {
+	Scope   string `json:"scope"`
+	Version string `json:"version"`
+}) string {
+	var fallback string
+	for _, e := range entries {
+		v := strings.TrimSpace(e.Version)
+		if v == "" || v == "unknown" {
+			continue
+		}
+		if e.Scope == "user" {
+			return v
+		}
+		if fallback == "" {
+			fallback = v
+		}
+	}
+	return fallback
 }
 
 func readCopilotInstalled(home string) ([]InstalledPlugin, error) {

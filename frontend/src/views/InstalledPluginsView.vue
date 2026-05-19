@@ -81,6 +81,15 @@ async function handleUninstall(pluginID: string) {
     toast.push({ type: 'error', message: `Uninstall failed: ${e}` });
   }
 }
+
+async function handleUpdate(installName: string) {
+  try {
+    await store.update(activeAgent.value, installName);
+    toast.push({ type: 'success', message: `"${installName}" updated successfully.` });
+  } catch (e) {
+    toast.push({ type: 'error', message: `Update failed: ${e}` });
+  }
+}
 </script>
 
 <template>
@@ -127,7 +136,9 @@ async function handleUninstall(pluginID: string) {
               v-for="p in shownPlugins"
               :key="p.uninstallName"
               :plugin="p"
+              :busy="store.isPluginBusy(p.uninstallName)"
               @uninstall="handleUninstall"
+              @update="handleUpdate"
             />
           </div>
         </AppTab>

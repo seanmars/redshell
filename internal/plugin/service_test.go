@@ -147,6 +147,42 @@ func TestIsMarketplaceRegistered_CopilotMatchesMarketplaces(t *testing.T) {
 	}
 }
 
+func TestReadClaudeInstalled_PopulatesVersionFromEntries(t *testing.T) {
+	home := t.TempDir()
+	pluginsDir := filepath.Join(home, ".claude", "plugins")
+	if err := os.MkdirAll(pluginsDir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(pluginsDir, "installed_plugins.json"), readFixture(t, "claude-installed-plugins.json"), 0o644); err != nil {
+		t.Fatalf("write claude installed: %v", err)
+	}
+
+	got, err := readClaudeInstalled(home)
+	if err != nil {
+		t.Fatalf("readClaudeInstalled: %v", err)
+	}
+	if len(got) != 3 {
+		t.Fatalf("expected 3 installed plugins, got %d (%+v)", len(got), got)
+	}
+
+	byKey := map[string]InstalledPlugin{}
+	for _, p := range got {
+		byKey[p.UninstallName] = p
+	}
+	if v := byKey["alpha@my-mkt"].Version; v != "1.0.0" {
+		t.Errorf("alpha version: want 1.0.0, got %q", v)
+	}
+	if v := byKey["beta@my-mkt"].Version; v != "" {
+		t.Errorf("beta version should be empty (entry is 'unknown'), got %q", v)
+	}
+	if v := byKey["gamma@my-mkt"].Version; v != "0.7.0" {
+		t.Errorf("gamma version should prefer user scope (0.7.0), got %q", v)
+	}
+	if mkt := byKey["alpha@my-mkt"].MarketplaceName; mkt != "my-mkt" {
+		t.Errorf("alpha marketplace: want my-mkt, got %q", mkt)
+	}
+}
+
 func TestReadCopilotInstalled_ReadsInstalledPluginsKey_SnakeCase(t *testing.T) {
 	home := t.TempDir()
 	copilotDir := filepath.Join(home, ".copilot")
@@ -417,6 +453,79 @@ func TestUpdateAgentMarketplace_RejectsDisabledAgent(t *testing.T) {
 	}
 	if calls != 0 {
 		t.Errorf("expected runner not to be called for disabled agent, got %d call(s)", calls)
+	}
+}
+
+func TestUpdatePlugin_Success(t *testing.T) {
+	svc, _, _, _ := newCacheBackedService(t, nil)
+
+	var gotAgent string
+	var gotArgs []string
+	stubStreamingRunner(t, func(agentID string, args []string, stdoutFn func(string)) error {
+		gotAgent = agentID
+		gotArgs = args
+		stdoutFn("Updating demo")
+		return nil
+	})
+
+	var logLines []string
+	err := svc.UpdatePlugin("claude", "demo@my-mkt", func(s string) { logLines = append(logLines, s) })
+	if err != nil {
+		t.Fatalf("UpdatePlugin: %v", err)
+	}
+	if gotAgent != "claude" {
+		t.Errorf("expected agent claude, got %q", gotAgent)
+	}
+	wantArgs := []string{"plugin", "update", "demo@my-mkt"}
+	if len(gotArgs) != len(wantArgs) {
+		t.Fatalf("args mismatch: got %v want %v", gotArgs, wantArgs)
+	}
+	for i, a := range wantArgs {
+		if gotArgs[i] != a {
+			t.Errorf("arg[%d]: got %q want %q", i, gotArgs[i], a)
+		}
+	}
+	if len(logLines) != 1 || logLines[0] != "[claude] Updating demo" {
+		t.Errorf("expected prefixed log line, got %v", logLines)
+	}
+}
+
+func TestUpdatePlugin_AgentDisabled(t *testing.T) {
+	svc, _, settingsSvc, _ := newCacheBackedService(t, nil)
+	if err := settingsSvc.SetEnabledAgents([]string{"claude"}); err != nil {
+		t.Fatalf("SetEnabledAgents: %v", err)
+	}
+
+	var calls int
+	stubStreamingRunner(t, func(string, []string, func(string)) error {
+		calls++
+		return nil
+	})
+
+	err := svc.UpdatePlugin("copilot", "demo@my-mkt", nil)
+	if err == nil || !strings.Contains(err.Error(), "agent is disabled: copilot") {
+		t.Fatalf("expected disabled-agent error, got %v", err)
+	}
+	if calls != 0 {
+		t.Errorf("expected runner not to be called, got %d call(s)", calls)
+	}
+}
+
+func TestUpdatePlugin_EmptyInstallName(t *testing.T) {
+	svc, _, _, _ := newCacheBackedService(t, nil)
+
+	var calls int
+	stubStreamingRunner(t, func(string, []string, func(string)) error {
+		calls++
+		return nil
+	})
+
+	err := svc.UpdatePlugin("claude", "   ", nil)
+	if err == nil || !strings.Contains(err.Error(), "installName is required") {
+		t.Fatalf("expected installName-required error, got %v", err)
+	}
+	if calls != 0 {
+		t.Errorf("expected runner not to be called for empty installName, got %d call(s)", calls)
 	}
 }
 

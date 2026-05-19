@@ -296,6 +296,7 @@ export namespace plugin {
 	    uninstallName: string;
 	    agent: string;
 	    marketplaceName: string;
+	    version?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new InstalledPlugin(source);
@@ -307,6 +308,7 @@ export namespace plugin {
 	        this.uninstallName = source["uninstallName"];
 	        this.agent = source["agent"];
 	        this.marketplaceName = source["marketplaceName"];
+	        this.version = source["version"];
 	    }
 	}
 	

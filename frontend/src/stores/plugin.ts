@@ -1,6 +1,12 @@
 import { defineStore } from 'pinia';
 import { computed, ref } from 'vue';
-import { FetchAll, Install, ListInstalled, Uninstall } from '@wailsjs/go/app/PluginApp';
+import {
+  FetchAll,
+  Install,
+  ListInstalled,
+  Uninstall,
+  UpdatePlugin,
+} from '@wailsjs/go/app/PluginApp';
 import { Refresh as RefreshMarketplaces } from '@wailsjs/go/app/MarketplaceApp';
 import { EventsOn } from '@wailsjs/runtime/runtime';
 import type { plugin } from '@wailsjs/go/models';
@@ -25,6 +31,7 @@ export const usePluginStore = defineStore('plugin', () => {
   const loading = ref(false);
   const refreshing = ref(false);
   const installing = ref(false);
+  const updatingPlugins = ref<Set<string>>(new Set());
   const installLog = ref<string[]>([]);
   const fetchErrors = ref<string[]>([]);
   const refreshWarnings = ref<Record<string, string>>({});
@@ -200,6 +207,24 @@ export const usePluginStore = defineStore('plugin', () => {
     installedPlugins.value = installedPlugins.value.filter((p) => p.uninstallName !== pluginID);
   }
 
+  function isPluginBusy(installName: string) {
+    return updatingPlugins.value.has(installName);
+  }
+
+  async function update(agentID: string, installName: string) {
+    const next = new Set(updatingPlugins.value);
+    next.add(installName);
+    updatingPlugins.value = next;
+    try {
+      await UpdatePlugin(agentID, installName);
+      await silentRefreshInstalled(agentID);
+    } finally {
+      const cleared = new Set(updatingPlugins.value);
+      cleared.delete(installName);
+      updatingPlugins.value = cleared;
+    }
+  }
+
   return {
     plugins,
     installedPlugins,
@@ -222,5 +247,8 @@ export const usePluginStore = defineStore('plugin', () => {
     clearSelection,
     installSelected,
     uninstall,
+    update,
+    isPluginBusy,
+    updatingPlugins,
   };
 });

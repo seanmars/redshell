@@ -29,3 +29,7 @@ export function UpdateAgentMarketplace(arg1) {
 export function UpdateAgentMarketplaces() {
   return window['go']['app']['PluginApp']['UpdateAgentMarketplaces']();
 }
+
+export function UpdatePlugin(arg1, arg2) {
+  return window['go']['app']['PluginApp']['UpdatePlugin'](arg1, arg2);
+}
