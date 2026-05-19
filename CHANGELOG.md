@@ -5,6 +5,46 @@
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/),
 版本號採用 [Semantic Versioning](https://semver.org/lang/zh-TW/).
 
+## [0.9.0] - 2026-05-19
+
+### Added
+
+- Installed Plugins 頁面新增 "Update" 按鈕: 放在每張卡片
+  "Uninstall" 按鈕左側, 點擊後呼叫對應 agent 的
+  `<agent> plugin update <name>@<marketplace>` 指令更新該 plugin,
+  完成後重新讀取 agent 的 installed-plugins 檔案以同步卡片 metadata.
+  - 後端新增 `plugin.Service.UpdatePlugin(agentID, installName, logFn)`,
+    沿用既有 `runAgentCmdStreaming` 將 CLI stdout 以 `[<agent>] ` prefix
+    串流回前端, 並重用既有 `plugin:install-log` Wails event (不新增 channel).
+    空字串 `installName` 與 disabled agent 都在 shell out 前被擋下.
+  - Wails wrapper `app/plugin.go` 對應新增 `PluginApp.UpdatePlugin`,
+    `frontend/wailsjs/go/app/PluginApp.{js,d.ts}` 與 `models.ts`
+    一併更新.
+  - 前端 `usePluginStore` 新增 `update(agentID, installName)` action
+    與 per-plugin 的 `updatingPlugins: Set<string>` busy set,
+    透過 `isPluginBusy(installName)` 暴露給卡片;
+    `InstalledPluginCard.vue` 在進行中時同時 disable Update / Uninstall
+    兩顆按鈕避免重複觸發, Update 按鈕額外顯示 spinner.
+  - Update 為冪等操作, 不彈出 confirm modal; 成功 / 失敗皆以 toast 回報,
+    錯誤訊息直接帶上 CLI stderr 內容.
+- Installed Plugin 卡片副標題顯示安裝版本 (例如
+  `claude-plugins-official · v1.0.0`):
+  - `internal/plugin/service.go` 的 `InstalledPlugin` struct 新增
+    `Version string` 欄位 (JSON `omitempty`).
+  - `readClaudeInstalled` 改為解析
+    `~/.claude/plugins/installed_plugins.json` v2 schema 每個 key 對應的
+    install 陣列, 取 `scope: "user"` 的 `version` 為主, 其他 scope 為
+    fallback; 字面值 `"unknown"` 視為無版本而忽略.
+  - Copilot 的 `~/.copilot/config.json` schema 不記錄 plugin 版本,
+    `Version` 留空, 副標題沿用既有「marketplace name」格式.
+
+### Changed
+
+- NSIS installer template `build/windows/installer/wails_tools.nsh`
+  `INFO_PRODUCTVERSION` 由 `0.6.0` 補上至 `0.8.0`, 配合 0.8.0 installer
+  release pipeline; 0.9.0 由 build pipeline 透過 ldflags 注入,
+  template 預設值僅作為 fallback.
+
 ## [0.8.0] - 2026-05-09
 
 ### Added

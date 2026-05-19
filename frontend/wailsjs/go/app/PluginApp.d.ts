@@ -16,3 +16,5 @@ export function Uninstall(arg1:string,arg2:string):Promise<void>;
 export function UpdateAgentMarketplace(arg1:string):Promise<plugin.AgentUpdateOutcome>;
 
 export function UpdateAgentMarketplaces():Promise<plugin.UpdateAgentMarketplacesResult>;
+
+export function UpdatePlugin(arg1:string,arg2:string):Promise<void>;

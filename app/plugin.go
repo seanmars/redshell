@@ -41,6 +41,14 @@ func (a *PluginApp) Uninstall(prov, pluginID string) error {
 	return a.svc.Uninstall(prov, pluginID)
 }
 
+func (a *PluginApp) UpdatePlugin(prov, installName string) error {
+	return a.svc.UpdatePlugin(prov, installName, func(msg string) {
+		if a.ctx != nil {
+			runtime.EventsEmit(a.ctx, "plugin:install-log", msg)
+		}
+	})
+}
+
 func (a *PluginApp) UpdateAgentMarketplaces() plugin.UpdateAgentMarketplacesResult {
 	return a.svc.UpdateAgentMarketplaces(func(msg string) {
 		if a.ctx != nil {

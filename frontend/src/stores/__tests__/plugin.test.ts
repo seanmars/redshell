@@ -7,6 +7,7 @@ vi.mock('@wailsjs/go/app/PluginApp', () => ({
   Install: vi.fn<() => Promise<void>>(),
   ListInstalled: vi.fn<() => Promise<unknown[]>>(),
   Uninstall: vi.fn<() => Promise<void>>(),
+  UpdatePlugin: vi.fn<() => Promise<void>>(),
 }));
 
 vi.mock('@wailsjs/go/app/MarketplaceApp', () => ({
@@ -89,5 +90,47 @@ describe('usePluginStore - mergedPlugins', () => {
     ];
     expect(store.mergedPluginsByMarketplace['mkt1']).toHaveLength(2);
     expect(store.mergedPluginsByMarketplace['mkt2']).toHaveLength(1);
+  });
+});
+
+describe('usePluginStore - update', () => {
+  beforeEach(async () => {
+    setActivePinia(createPinia());
+    const PluginApp = await import('@wailsjs/go/app/PluginApp');
+    vi.mocked(PluginApp.UpdatePlugin).mockReset();
+    vi.mocked(PluginApp.ListInstalled).mockReset();
+  });
+
+  it('invokes UpdatePlugin, tracks busy state, and refreshes installed list', async () => {
+    const PluginApp = await import('@wailsjs/go/app/PluginApp');
+    const installed = makeInstalled('demo', 'claude', 'my-mkt');
+    vi.mocked(PluginApp.ListInstalled).mockResolvedValue([installed]);
+
+    let busyDuringCall = false;
+    vi.mocked(PluginApp.UpdatePlugin).mockImplementation(async () => {
+      busyDuringCall = store.isPluginBusy('demo@my-mkt');
+    });
+
+    const store = usePluginStore();
+    expect(store.isPluginBusy('demo@my-mkt')).toBe(false);
+
+    await store.update('claude', 'demo@my-mkt');
+
+    expect(PluginApp.UpdatePlugin).toHaveBeenCalledWith('claude', 'demo@my-mkt');
+    expect(busyDuringCall).toBe(true);
+    expect(store.isPluginBusy('demo@my-mkt')).toBe(false);
+    expect(PluginApp.ListInstalled).toHaveBeenCalledWith('claude');
+    expect(store.installedPlugins).toHaveLength(1);
+    expect(store.installedPlugins[0]!.uninstallName).toBe('demo@my-mkt');
+  });
+
+  it('clears busy state when UpdatePlugin rejects', async () => {
+    const PluginApp = await import('@wailsjs/go/app/PluginApp');
+    vi.mocked(PluginApp.UpdatePlugin).mockRejectedValue(new Error('boom'));
+
+    const store = usePluginStore();
+    await expect(store.update('claude', 'demo@my-mkt')).rejects.toThrow('boom');
+    expect(store.isPluginBusy('demo@my-mkt')).toBe(false);
+    expect(PluginApp.ListInstalled).not.toHaveBeenCalled();
   });
 });

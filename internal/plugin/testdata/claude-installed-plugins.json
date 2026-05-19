@@ -1,0 +1,39 @@
+{
+  "version": 2,
+  "plugins": {
+    "alpha@my-mkt": [
+      {
+        "scope": "user",
+        "installPath": "C:\\Users\\u\\.claude\\plugins\\cache\\my-mkt\\alpha\\1.0.0",
+        "version": "1.0.0",
+        "installedAt": "2026-04-08T00:15:39.501Z",
+        "lastUpdated": "2026-04-08T00:15:39.501Z"
+      }
+    ],
+    "beta@my-mkt": [
+      {
+        "scope": "user",
+        "installPath": "C:\\Users\\u\\.claude\\plugins\\cache\\my-mkt\\beta\\unknown",
+        "version": "unknown",
+        "installedAt": "2026-04-08T00:15:39.501Z",
+        "lastUpdated": "2026-04-08T00:15:39.501Z"
+      }
+    ],
+    "gamma@my-mkt": [
+      {
+        "scope": "project",
+        "installPath": "C:\\proj\\.claude\\plugins\\cache\\my-mkt\\gamma\\0.5.0",
+        "version": "0.5.0",
+        "installedAt": "2026-04-08T00:15:39.501Z",
+        "lastUpdated": "2026-04-08T00:15:39.501Z"
+      },
+      {
+        "scope": "user",
+        "installPath": "C:\\Users\\u\\.claude\\plugins\\cache\\my-mkt\\gamma\\0.7.0",
+        "version": "0.7.0",
+        "installedAt": "2026-04-08T00:15:39.501Z",
+        "lastUpdated": "2026-04-08T00:15:39.501Z"
+      }
+    ]
+  }
+}
