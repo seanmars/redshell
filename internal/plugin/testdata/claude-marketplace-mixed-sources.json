@@ -1,0 +1,47 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "Mixed Sources",
+  "description": "Manifest with both string and object source forms (mirrors claude-plugins-official.json)",
+  "owner": { "name": "Example", "email": "ex@example.com" },
+  "plugins": [
+    {
+      "name": "string-source",
+      "description": "Relative path string source",
+      "source": "./plugins/string-source",
+      "category": "development"
+    },
+    {
+      "name": "git-subdir-source",
+      "description": "Object-form source pointing at a subdirectory of a git repo",
+      "source": {
+        "source": "git-subdir",
+        "url": "https://github.com/example/repo.git",
+        "path": "plugins/git-subdir-source",
+        "ref": "main",
+        "sha": "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
+      },
+      "category": "development"
+    },
+    {
+      "name": "url-source",
+      "description": "Object-form url source",
+      "source": {
+        "source": "url",
+        "url": "https://github.com/example/url-source.git",
+        "sha": "cafebabecafebabecafebabecafebabecafebabe"
+      },
+      "category": "development"
+    },
+    {
+      "name": "github-source",
+      "description": "Object-form github source",
+      "source": {
+        "source": "github",
+        "repo": "example/github-source",
+        "commit": "1111111111111111111111111111111111111111",
+        "sha": "2222222222222222222222222222222222222222"
+      },
+      "category": "development"
+    }
+  ]
+}

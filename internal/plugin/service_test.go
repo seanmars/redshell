@@ -53,6 +53,31 @@ func TestManifestParser_OptionalFieldsIgnored_Copilot(t *testing.T) {
 	}
 }
 
+func TestManifestParser_AcceptsObjectSource(t *testing.T) {
+	var m marketplaceManifest
+	if err := json.Unmarshal(readFixture(t, "claude-marketplace-mixed-sources.json"), &m); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(m.Plugins) != 4 {
+		t.Fatalf("expected 4 plugins, got %d", len(m.Plugins))
+	}
+	bySrc := map[string]string{}
+	for _, p := range m.Plugins {
+		bySrc[p.Name] = p.Source
+	}
+	if bySrc["string-source"] != "./plugins/string-source" {
+		t.Errorf("string source decoded as %q", bySrc["string-source"])
+	}
+	for _, name := range []string{"git-subdir-source", "url-source", "github-source"} {
+		if bySrc[name] == "" {
+			t.Errorf("object source for %q should be a non-empty representation, got empty", name)
+		}
+		if strings.HasPrefix(bySrc[name], "\"") {
+			t.Errorf("object source for %q should be raw JSON, got string-encoded: %s", name, bySrc[name])
+		}
+	}
+}
+
 func TestManifestParser_MalformedJSON(t *testing.T) {
 	var m marketplaceManifest
 	if err := json.Unmarshal(readFixture(t, "malformed.json"), &m); err == nil {

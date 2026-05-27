@@ -55,6 +55,35 @@ type manifestPlugin struct {
 	Description string `json:"description"`
 }
 
+func (p *manifestPlugin) UnmarshalJSON(data []byte) error {
+	var raw struct {
+		Name        string          `json:"name"`
+		Source      json.RawMessage `json:"source"`
+		Description string          `json:"description"`
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	p.Name = raw.Name
+	p.Description = raw.Description
+
+	src := bytes.TrimSpace(raw.Source)
+	if len(src) == 0 || bytes.Equal(src, []byte("null")) {
+		p.Source = ""
+		return nil
+	}
+	if src[0] == '"' {
+		var s string
+		if err := json.Unmarshal(src, &s); err != nil {
+			return err
+		}
+		p.Source = s
+		return nil
+	}
+	p.Source = string(src)
+	return nil
+}
+
 type marketplaceManifest struct {
 	Name    string           `json:"name"`
 	Plugins []manifestPlugin `json:"plugins"`
