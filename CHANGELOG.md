@@ -5,6 +5,30 @@
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/),
 版本號採用 [Semantic Versioning](https://semver.org/lang/zh-TW/).
 
+## [0.10.0] - 2026-05-27
+
+### Fixed
+
+- 修正讀取 `claude-plugins-official` 官方 marketplace 時 manifest 解析失敗,
+  導致整份 marketplace 的 plugin 全部無法顯示的問題.
+  - 原因: `internal/plugin/service.go` 的 `manifestPlugin.Source` 宣告為
+    `string`, 但官方 marketplace 同時混用兩種 source shape: 字串形式
+    (例如 `"./plugins/agent-sdk-dev"`) 與物件形式 (例如
+    `{"source": "git-subdir", "url": "...", "ref": "main", "sha": "..."}`).
+    `encoding/json` 在碰到第一個物件形式時即 abort 整份 unmarshal,
+    使 `FetchAll` 對該 marketplace 回傳空 plugin 清單, 前端 Browse /
+    Installed 皆看不到任何官方 plugin.
+  - 修法: `manifestPlugin` 自訂 `UnmarshalJSON`, 透過 `json.RawMessage`
+    同時接受兩種形式. 字串形式照舊 unquote 後寫入 `Source`; 物件形式
+    保留原始 JSON 字串以維持 `Source != ""` 的 skip-check 行為. 缺欄位
+    或 `null` 視為空字串. 對外公開的 `Source string` 型別與既有 caller
+    (`fetchForAgent` 的 empty-check, 既有單元測試) 完全相容.
+  - 新增 regression test `TestManifestParser_AcceptsObjectSource` 與
+    fixture `internal/plugin/testdata/claude-marketplace-mixed-sources.json`,
+    涵蓋 `git-subdir`, `url`, `github` 三種物件形式來源; 並以實際
+    `claude-plugins-official.json` smoke-parse 驗證可成功解析全部
+    203 個 plugin.
+
 ## [0.9.0] - 2026-05-19
 
 ### Added
