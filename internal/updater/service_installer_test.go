@@ -69,9 +69,12 @@ func newInstallerTestService(t *testing.T, rec *installerCallRecord, rel Release
 		preferences.AutoUpdateSourceGitHub: &fakeProvider{name: "github", release: rel},
 		preferences.AutoUpdateSourceGitLab: &fakeProvider{name: "gitlab", release: rel},
 	}, Options{
-		HTTPClient:     srvClient,
-		Swap:           func(string, string) error { t.Fatal("swap must not be called on installer pathway"); return nil },
-		Spawn:          func(string) error { t.Fatal("portable spawn must not be called on installer pathway"); return nil },
+		HTTPClient: srvClient,
+		Swap:       func(string, string) error { t.Fatal("swap must not be called on installer pathway"); return nil },
+		Spawn: func(string, []string) error {
+			t.Fatal("portable spawn must not be called on installer pathway")
+			return nil
+		},
 		InstallerSpawn: rec.spawn,
 	})
 	if err != nil {
@@ -115,7 +118,7 @@ func TestService_StartSkipsManualRequiredForInstallerBuild(t *testing.T) {
 		preferences.AutoUpdateSourceGitLab: &fakeProvider{name: "gitlab"},
 	}, Options{
 		Swap:           func(string, string) error { return nil },
-		Spawn:          func(string) error { return nil },
+		Spawn:          func(string, []string) error { return nil },
 		InstallerSpawn: func(string, []string) error { return nil },
 	})
 	if err != nil {
@@ -142,7 +145,7 @@ func TestService_GetStateReportsBuildKindAndScopesManualRequired(t *testing.T) {
 	svc, err := NewServiceWithProviders(prefs, "v0.4.0", exePath, map[string]Provider{
 		preferences.AutoUpdateSourceGitHub: &fakeProvider{name: "github"},
 		preferences.AutoUpdateSourceGitLab: &fakeProvider{name: "gitlab"},
-	}, Options{Swap: func(string, string) error { return nil }, Spawn: func(string) error { return nil }, InstallerSpawn: func(string, []string) error { return nil }})
+	}, Options{Swap: func(string, string) error { return nil }, Spawn: func(string, []string) error { return nil }, InstallerSpawn: func(string, []string) error { return nil }})
 	if err != nil {
 		t.Fatalf("NewServiceWithProviders: %v", err)
 	}
