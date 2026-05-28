@@ -5,6 +5,36 @@
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/),
 版本號採用 [Semantic Versioning](https://semver.org/lang/zh-TW/).
 
+## [0.11.0] - 2026-05-28
+
+### Added
+
+- Production 單一實例 (single-instance) 限制: release build 啟動時若偵測到
+  已有 RedShell 在執行, 會將既有視窗帶到前景 (含已最小化至系統匣或工作列
+  的情況) 並立即結束自己, 避免再開出第二個視窗 / 匣圖示. 開發模式
+  (`wails dev`) 不受限制, 仍可同時執行多個實例.
+  - 採用 Wails v2 內建 `options.SingleInstanceLock`, 以
+    `UniqueId = "com.seanmars.redshell"` 命名 OS named mutex; 重複啟動的
+    程序由 Wails 透過 `WM_COPYDATA` 將 argv 轉交既有實例後 `os.Exit(0)`,
+    既有實例的 `OnSecondInstanceLaunch` callback 以
+    `runtime.WindowUnminimise` + `runtime.WindowShow` 喚回視窗
+    (Windows 的 `WindowShow` 內含 `SetForegroundWindow` + `SetFocus`,
+    故會帶到前景).
+  - 以 build tag 分流: `singleinstance_prod.go` (`//go:build production`)
+    回傳設定好的 lock, `singleinstance_other.go` (`//go:build !production`)
+    回傳 `nil`. `wails build` 預設 Mode=Production 會自動帶入 `production`
+    tag 使 release 版生效; `go test` / `go vet` / 純 `go build` 無 tag 時
+    編譯 no-op 版本, 故開發與測試不受限.
+  - 自動更新相容處理: updater 重啟新二進位時改帶
+    `--wait-parent-pid=<舊pid>`, 新程序在進入 `wails.Run` (取得 lock)
+    之前先等待舊程序結束 (有上限 timeout) 再繼續, 避免「spawn 新程序 ->
+    偵測到仍在世的舊程序 -> 自我結束」導致 swap 後零實例的情況. Windows
+    以 `OpenProcess(SYNCHRONIZE)` + `WaitForSingleObject` 實作, 非 Windows
+    為 no-op stub.
+  - `internal/updater` 的 `SpawnFunc` 簽章由 `func(string) error` 改為
+    `func(string, []string) error` 以攜帶 relaunch 旗標, relaunch 參數於
+    service 端組裝, 可經既有 `Spawn` 注入點完整單元測試.
+
 ## [0.10.0] - 2026-05-27
 
 ### Fixed

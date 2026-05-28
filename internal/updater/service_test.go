@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -87,7 +88,7 @@ func newTestService(t *testing.T, providers map[string]Provider, runningVersion 
 	svc, err := NewServiceWithProviders(prefs, runningVersion, exePath, providers, Options{
 		Now:   func() time.Time { return time.Date(2026, 5, 7, 12, 0, 0, 0, time.UTC) },
 		Swap:  func(currentPath, newPath string) error { return os.Rename(newPath, currentPath) },
-		Spawn: func(string) error { return nil },
+		Spawn: func(string, []string) error { return nil },
 	})
 	if err != nil {
 		t.Fatalf("NewServiceWithProviders: %v", err)
@@ -239,6 +240,7 @@ func TestService_InstallAvailableHappyPath(t *testing.T) {
 	}
 
 	var swapCalled, spawnCalled, quitCalled bool
+	var spawnArgs []string
 	svc, err := NewServiceWithProviders(prefs, "v0.4.0", exePath, map[string]Provider{
 		preferences.AutoUpdateSourceGitHub: &fakeProvider{name: "github", release: rel},
 		preferences.AutoUpdateSourceGitLab: &fakeProvider{name: "gitlab", release: rel},
@@ -248,7 +250,7 @@ func TestService_InstallAvailableHappyPath(t *testing.T) {
 			swapCalled = true
 			return os.Rename(newPath, currentPath)
 		},
-		Spawn: func(string) error { spawnCalled = true; return nil },
+		Spawn: func(_ string, args []string) error { spawnCalled = true; spawnArgs = args; return nil },
 	})
 	if err != nil {
 		t.Fatalf("NewServiceWithProviders: %v", err)
@@ -269,6 +271,10 @@ func TestService_InstallAvailableHappyPath(t *testing.T) {
 	}
 	if !spawnCalled {
 		t.Fatal("spawn should be called")
+	}
+	wantArg := fmt.Sprintf("%s=%d", WaitParentPIDFlag, os.Getpid())
+	if len(spawnArgs) != 1 || spawnArgs[0] != wantArg {
+		t.Fatalf("relaunch args: got %v want [%q]", spawnArgs, wantArg)
 	}
 	if !quitCalled {
 		t.Fatal("quit should be called")
@@ -322,7 +328,7 @@ func TestService_InstallAvailableRejectsChecksumMismatch(t *testing.T) {
 	}, Options{
 		HTTPClient: srv.Client(),
 		Swap:       func(string, string) error { t.Fatal("swap must not be called on checksum mismatch"); return nil },
-		Spawn:      func(string) error { t.Fatal("spawn must not be called on checksum mismatch"); return nil },
+		Spawn:      func(string, []string) error { t.Fatal("spawn must not be called on checksum mismatch"); return nil },
 	})
 	if err != nil {
 		t.Fatalf("NewServiceWithProviders: %v", err)
@@ -369,7 +375,7 @@ func TestService_InstallAvailableRejectsMissingChecksumsEntry(t *testing.T) {
 	svc, err := NewServiceWithProviders(prefs, "v0.4.0", exePath, map[string]Provider{
 		preferences.AutoUpdateSourceGitHub: &fakeProvider{name: "github", release: rel},
 		preferences.AutoUpdateSourceGitLab: &fakeProvider{name: "gitlab", release: rel},
-	}, Options{HTTPClient: srv.Client(), Swap: func(string, string) error { return nil }, Spawn: func(string) error { return nil }})
+	}, Options{HTTPClient: srv.Client(), Swap: func(string, string) error { return nil }, Spawn: func(string, []string) error { return nil }})
 	if err != nil {
 		t.Fatalf("NewServiceWithProviders: %v", err)
 	}
@@ -440,7 +446,7 @@ func TestService_StartEmitsManualRequiredOnNonWritableDir(t *testing.T) {
 		preferences.AutoUpdateSourceGitHub: &fakeProvider{name: "github"},
 		preferences.AutoUpdateSourceGitLab: &fakeProvider{name: "gitlab"},
 	}, Options{
-		Swap: func(string, string) error { return nil }, Spawn: func(string) error { return nil },
+		Swap: func(string, string) error { return nil }, Spawn: func(string, []string) error { return nil },
 	})
 	if err != nil {
 		t.Fatalf("NewServiceWithProviders: %v", err)
@@ -504,7 +510,7 @@ func TestService_MaybeFireStartupCheckHonorsLastCheckedAt(t *testing.T) {
 	svc, err := NewServiceWithProviders(prefs, "v0.4.0", exePath, map[string]Provider{
 		preferences.AutoUpdateSourceGitHub: provider,
 		preferences.AutoUpdateSourceGitLab: &fakeProvider{name: "gitlab"},
-	}, Options{Now: func() time.Time { return now }, Swap: func(string, string) error { return nil }, Spawn: func(string) error { return nil }})
+	}, Options{Now: func() time.Time { return now }, Swap: func(string, string) error { return nil }, Spawn: func(string, []string) error { return nil }})
 	if err != nil {
 		t.Fatalf("NewServiceWithProviders: %v", err)
 	}

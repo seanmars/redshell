@@ -33,9 +33,16 @@ type EventEmitter func(name string, data any)
 // to the package-level Swap; tests inject a fake.
 type SwapFunc func(currentPath, newPath string) error
 
-// SpawnFunc starts a detached child process at exePath. Defaults to
-// exec.Command(exePath).Start(); tests inject a fake.
-type SpawnFunc func(exePath string) error
+// WaitParentPIDFlag is the argv flag the updater hands the relaunched binary
+// so it can wait for the outgoing process to exit before acquiring the
+// single-instance lock. Parsed by main() before the Wails runtime starts.
+// Format: "--wait-parent-pid=<pid>".
+const WaitParentPIDFlag = "--wait-parent-pid"
+
+// SpawnFunc starts a detached child process at exePath with the given args.
+// Defaults to exec.Command(exePath, args...).Start(); tests inject a fake to
+// capture the relaunch command line.
+type SpawnFunc func(exePath string, args []string) error
 
 // InstallerSpawnFunc launches the NSIS installer with elevation. Defaults
 // to SpawnInstaller (which uses ShellExecute "runas" on Windows). Tests
@@ -190,8 +197,8 @@ func buildProviders(au preferences.AutoUpdate, httpClient *http.Client) (map[str
 	}, nil
 }
 
-func defaultSpawn(exePath string) error {
-	cmd := exec.Command(exePath)
+func defaultSpawn(exePath string, args []string) error {
+	cmd := exec.Command(exePath, args...)
 	cmd.Stdin = nil
 	cmd.Stdout = nil
 	cmd.Stderr = nil
@@ -625,7 +632,8 @@ func (s *Service) install(ctx context.Context, rel Release) error {
 		return err
 	}
 
-	if err := s.spawn(s.exePath); err != nil {
+	relaunchArgs := []string{fmt.Sprintf("%s=%d", WaitParentPIDFlag, os.Getpid())}
+	if err := s.spawn(s.exePath, relaunchArgs); err != nil {
 		s.emit("updater:error", map[string]any{
 			"stage":   "spawn",
 			"message": err.Error(),

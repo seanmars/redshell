@@ -5,10 +5,12 @@ import (
 	"embed"
 	"encoding/json"
 	"os"
+	"time"
 
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
+	"github.com/wailsapp/wails/v2/pkg/runtime"
 
 	"redshell/app"
 	"redshell/internal/agent"
@@ -27,6 +29,19 @@ var assets embed.FS
 //go:embed wails.json
 var wailsConfig []byte
 
+// singleInstanceUniqueID namespaces the production single-instance lock. It
+// MUST stay stable across releases so two different installed versions cannot
+// run at once (Wails derives the OS mutex name from it).
+const singleInstanceUniqueID = "com.seanmars.redshell"
+
+// waitParentTimeout bounds how long an updater-relaunched binary waits for the
+// outgoing process to exit before proceeding to acquire the lock.
+const waitParentTimeout = 10 * time.Second
+
+// appCtx is the Wails runtime context captured in OnStartup so the
+// single-instance second-launch callback can raise the existing window.
+var appCtx context.Context
+
 type Config struct {
 	Info struct {
 		ProductVersion string `json:"productVersion"`
@@ -40,6 +55,15 @@ func GetAppVersion() string {
 }
 
 func main() {
+	// Updater relaunch handshake: when the auto-updater spawns this binary it
+	// passes --wait-parent-pid=<oldpid>. Wait for that process to exit (and
+	// release the single-instance lock) before continuing into wails.Run,
+	// otherwise this fresh instance would detect the still-alive old one and
+	// terminate itself, leaving zero instances running.
+	if pid, ok := parseWaitParentPID(os.Args[1:]); ok {
+		waitForParentExit(pid, waitParentTimeout)
+	}
+
 	agentSvc := agent.NewService()
 	agentSettingsSvc := agent.NewSettingsService()
 	marketplaceSvc := marketplace.NewService()
@@ -86,7 +110,19 @@ func main() {
 			Assets: assets,
 		},
 		BackgroundColour: &options.RGBA{R: 27, G: 38, B: 54, A: 1},
+		SingleInstanceLock: newSingleInstanceLock(func(options.SecondInstanceData) {
+			if appCtx == nil {
+				return
+			}
+			// Cover both hidden-to-tray (WindowShow) and minimized-to-taskbar
+			// (WindowUnminimise -> Restore) states; WindowShow ends with
+			// SetForegroundWindow + SetFocus on Windows so the window comes
+			// to the front.
+			runtime.WindowUnminimise(appCtx)
+			runtime.WindowShow(appCtx)
+		}),
 		OnStartup: func(ctx context.Context) {
+			appCtx = ctx
 			agentApp.Startup(ctx)
 			pluginApp.SetContext(ctx)
 			systemApp.Startup(ctx)
